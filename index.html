@@ -813,6 +813,7 @@
             atualizarInterface();
         }
         function editarCategoria(index) {
+            // Utilizamos os dados originais (dadosAtuais.categorias) que podem não estar ordenados de A a Z
             let cat = dadosAtuais.categorias[index];
             let novoNome = prompt("Alterar nome da categoria:", cat.nome);
             if(novoNome && novoNome.trim() !== "" && novoNome !== cat.nome) {
@@ -832,10 +833,17 @@
             const tbody = document.getElementById('tabela-categorias');
             const select = document.getElementById('input-cat');
             tbody.innerHTML = ''; select.innerHTML = '<option value="">Categoria...</option>';
-            dadosAtuais.categorias.forEach((cat, index) => {
+            
+            // Para manter a coerência de A-Z no dropdown, vamos criar uma cópia ordenada:
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+
+            categoriasOrdenadas.forEach((cat) => {
+                // Recupera o index original para que as funções Editar/Apagar funcionem corretamente na lista mãe
+                let indexOriginal = dadosAtuais.categorias.indexOf(cat);
+                
                 tbody.innerHTML += `<tr><td>${cat.nome}</td><td>${cat.tipo}</td><td>
-                    <button class="btn-edit" onclick="editarCategoria(${index})">Editar</button> 
-                    <button class="btn-danger" onclick="apagarCategoria(${index})">Apagar</button>
+                    <button class="btn-edit" onclick="editarCategoria(${indexOriginal})">Editar</button> 
+                    <button class="btn-danger" onclick="apagarCategoria(${indexOriginal})">Apagar</button>
                 </td></tr>`;
                 select.innerHTML += `<option value="${cat.nome}">${cat.nome} (${cat.tipo})</option>`;
             });
@@ -933,7 +941,10 @@
             let totaisReceitas = new Array(meses.length).fill(0);
             let totaisDespesas = new Array(meses.length).fill(0);
 
-            dadosAtuais.categorias.forEach(cat => {
+            // Ordenação Alfabética A-Z
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+
+            categoriasOrdenadas.forEach(cat => {
                 let tr = document.createElement('tr');
                 tr.innerHTML = `<td style="font-weight: bold;">${cat.nome} <span style="font-size:0.7rem; color:#888;">(${cat.tipo})</span></td>`;
 
@@ -1126,6 +1137,9 @@
             if(meses.length === 0) return;
             let saldoInicialAtual = calcularSaldoAnterior(meses[0].id, 'realizado');
 
+            // Ordenação Alfabética A-Z no detalhamento do fluxo de caixa também
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+
             meses.forEach(m => {
                 let entradasMes = 0; let saidasMes = 0;
                 dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id).forEach(l => {
@@ -1143,7 +1157,7 @@
                     </tr>
                 `;
                 
-                dadosAtuais.categorias.forEach(cat => {
+                categoriasOrdenadas.forEach(cat => {
                     let catTotal = dadosAtuais.lancamentos
                         .filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id)
                         .reduce((acc, curr) => acc + curr.valor, 0);
@@ -1176,7 +1190,10 @@
             let meses = obterMesesFiltro();
             if(meses.length === 0) return;
 
-            dadosAtuais.categorias.forEach(cat => {
+            // Ordenação Alfabética A-Z
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+
+            categoriasOrdenadas.forEach(cat => {
                 let previsto = 0, realizado = 0;
                 meses.forEach(m => {
                     previsto += dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
