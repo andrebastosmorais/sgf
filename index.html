@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGF - Sistema de Gestão Financeira</title>
+    <style>
+        :root { --primary: #2563eb; --bg-color: #f3f4f6; --card-bg: #ffffff; --text-dark: #1f2937; --text-light: #6b7280; --success: #10b981; --danger: #ef4444; --border: #e5e7eb; --summary-bg: #f8fafc; --warning: #f59e0b; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-dark); }
+        
+        header { background-color: var(--primary); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .btn-google { background-color: white; color: #1f2937; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
+        /* Barra de Arquivos (Top) */
+        .controls-bar { background-color: #1e40af; padding: 0.5rem 1rem; display: flex; gap: 1rem; overflow-x: auto; align-items: center; border-radius: 8px; margin-bottom: 1rem; }
+        .control-tab { background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 15px; border-radius: 15px; cursor: pointer; }
+        .control-tab.active { background: white; color: var(--primary); font-weight: bold; }
+
+        .container { max-width: 1200px; margin: 1rem auto 2rem; padding: 0 1rem; }
+        
+        /* Filtros e Configs */
+        .config-box { background: #e0e7ff; padding: 1rem; border-radius: 8px; border: 1px solid #c7d2fe; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+        .global-filter { background: var(--summary-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+        .global-filter input[type="month"], .config-box input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+
+        /* Abas Principais */
+        .main-tabs { display: flex; gap: 1rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border); padding-bottom: 5px; }
+        .main-tab-btn { background: none; border: none; font-size: 1.2rem; padding: 10px 20px; cursor: pointer; color: var(--text-light); }
+        .main-tab-btn.active { color: var(--primary); font-weight: bold; border-bottom: 3px solid var(--primary); }
+
+        .sub-nav { display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; overflow-x: auto; white-space: nowrap; }
+        .sub-nav button { background: none; border: none; color: var(--text-light); font-size: 1rem; cursor: pointer; padding: 5px 10px; }
+        .sub-nav button.active { color: var(--primary); font-weight: bold; border-bottom: 2px solid var(--primary); }
+        .section { display: none; background: var(--card-bg); padding: 2rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .section.active { display: block; }
+
+        /* Tabelas */
+        .tabelao-container { overflow-x: auto; margin-top: 1rem; border: 1px solid var(--border); border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 800px; }
+        th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
+        th { background-color: #f9fafb; font-weight: bold; text-align: center; }
+        .row-summary td { background-color: var(--summary-bg); font-weight: bold; border-top: 2px solid var(--border); }
+        .text-right { text-align: right; }
+        
+        .dashboard-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .card { border: 1px solid var(--border); padding: 1.5rem; border-radius: 8px; }
+        .card h3 { color: var(--text-light); font-size: 0.9rem; margin-bottom: 0.5rem; }
+        .card .value { font-size: 1.5rem; font-weight: bold; }
+
+        .btn-action { background-color: var(--success); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .btn-warning { background-color: var(--warning); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .btn-danger { background-color: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+        .btn-edit { background-color: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+        
+        .input-group { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+        .input-group input, .input-group select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        #loading-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); color:white; justify-content:center; align-items:center; z-index:9999; font-size:1.5rem;}
+        
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal { background: white; padding: 2rem; border-radius: 8px; width: 90%; max-width: 800px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        .modal-close { cursor: pointer; font-size: 1.5rem; font-weight: bold; color: var(--text-light); border: none; background: none; }
+        .clickable-cell { cursor: pointer; color: var(--primary); text-decoration: underline; text-align: right; font-weight: bold; display: block; width: 100%; }
+        .clickable-cell:hover { background-color: #eff6ff; }
+        
+        .form-modal { display: grid; grid-template-columns: 1fr 2fr 1fr auto; gap: 10px; align-items: center; background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e2e8f0; }
+
+        .inv-tab { display: none; }
+        .inv-tab.active { display: block; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div id="loading-overlay">A carregar... Por favor, aguarde.</div>
+
+    <header>
+        <h2>SGF - Sistema de Gestão Financeira</h2>
+        <button id="auth-btn" class="btn-google" onclick="handleAuthClick()">Ligar ao Google Drive</button>
+    </header>
+
+    <div class="container" id="app-container" style="display: none;">
+        
+        <div class="main-tabs">
+            <button class="main-tab-btn active" id="tab-btn-financas" onclick="switchMainTab('financas')">Gestão Financeira</button>
+            <button class="main-tab-btn" id="tab-btn-investimentos" onclick="switchMainTab('investimentos')">Investimentos</button>
+        </div>
+
+        <div id="financas-container">
+            
+            <div class="controls-bar" id="tabs-container">
+                <span style="color:white; font-size:0.9rem; padding-top:5px;">Inicie sessão para ver os seus controles...</span>
+            </div>
+            
+            <div class="config-box">
+                <h3 style="margin-right: 1rem; font-size: 1rem; color: #3730a3;">Configuração Inicial:</h3>
+                <label>Mês de Início Base:</label>
+                <input type="month" id="config-data-base" onchange="atualizarConfiguracaoBase()">
+                <label>Saldo Inicial:</label>
+                <input type="number" id="config-saldo-base" onchange="atualizarConfiguracaoBase()" step="0.01">
+                
+                <button onclick="criarNovoArquivo()" style="margin-left: auto; background: var(--success); color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap;">+ Novo Controle</button>
+            </div>
+
+            <div class="global-filter">
+                <h3 style="margin-right: 1rem; font-size: 1.1rem;">Período Visualizado:</h3>
+                <label>De:</label> <input type="month" id="filtro-inicio">
+                <label>Até:</label> <input type="month" id="filtro-fim">
+                <button class="btn-action" onclick="atualizarInterface()" style="background: var(--primary);">Aplicar Filtro</button>
+                <div style="flex: 1; text-align: right;">
+                    <button class="btn-action" onclick="salvarAlteracoesNoDrive()" style="background-color: #10b981; font-size: 1rem;">💾 Guardar no Drive</button>
+                </div>
+            </div>
+
+            <div class="sub-nav">
+                <button class="active" onclick="showSection('dashboard', this)">Dashboard</button>
+                <button onclick="showSection('fluxo-caixa', this)">Fluxo de Caixa</button>
+                <button onclick="showSection('comparativo', this)">Previsto x Realizado</button>
+                <button onclick="showSection('realizado', this)">Realizado</button>
+                <button onclick="showSection('orcamento', this)">Orçamento</button>
+                <button onclick="showSection('lancamentos', this)">Lançamentos Gerais</button>
+                <button onclick="showSection('categorias', this)">Categorias</button>
+            </div>
+
+            <div id="dashboard" class="section active">
+                <h2>Resumo do Período (<span id="dash-label-periodo"></span>)</h2>
+                <div class="dashboard-cards" style="margin-top: 1rem;">
+                    <div class="card"><h3>Entradas Realizadas</h3><div class="value" style="color: var(--success);" id="dash-receitas">0,00</div></div>
+                    <div class="card"><h3>Saídas Realizadas</h3><div class="value" style="color: var(--danger);" id="dash-despesas">0,00</div></div>
+                    <div class="card"><h3>Saldo Final Realizado</h3><div class="value" id="dash-saldo">0,00</div></div>
+                </div>
+                <div style="max-width: 800px; margin: 0 auto;"><canvas id="graficoEvolucao"></canvas></div>
+            </div>
+
+            <div id="fluxo-caixa" class="section">
+                <h2>Fluxo de Caixa (Realizado)</h2>
+                <div class="tabelao-container">
+                    <table id="tabela-fluxo-caixa">
+                        <thead><tr><th style="text-align: left;">Mês de Referência</th><th class="text-right">Saldo Inicial</th><th class="text-right">Entradas</th><th class="text-right">Saídas</th><th class="text-right">Saldo Final</th></tr></thead>
+                        <tbody id="body-fluxo-caixa"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="comparativo" class="section">
+                <h2>Previsto x Realizado</h2>
+                <div class="tabelao-container">
+                    <table id="tabela-comparativo">
+                        <thead><tr><th style="text-align: left;">Categoria</th><th style="background:#f8fafc;" class="text-right">Previsto</th><th style="background:#f0fdf4;" class="text-right">Realizado</th><th style="background:#fffbeb;" class="text-right">Diferença</th></tr></thead>
+                        <tbody id="body-comparativo"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="realizado" class="section">
+                <h2>Realizado & Fechamento de Caixa</h2>
+                <p style="color: var(--text-light); margin: 1rem 0;">Clique nas células para detalhar os valores realizados e efetuar o fechamento ao final da tabela.</p>
+                <div class="tabelao-container">
+                    <table id="tabela-realizado">
+                        <thead id="head-realizado"></thead>
+                        <tbody id="body-realizado"></tbody>
+                        <tfoot id="foot-realizado"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div id="orcamento" class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Orçamento</h2>
+                    <button class="btn-warning" onclick="replicarOrcadoParaRealizadoGlobal()">📋 Copiar Todo Orçado p/ Realizado</button>
+                </div>
+                <p style="color: var(--text-light); margin: 1rem 0;">Clique nas células para detalhar os valores orçados.</p>
+                <div class="tabelao-container">
+                    <table id="tabela-orcamento">
+                        <thead id="head-orcamento"></thead>
+                        <tbody id="body-orcamento"></tbody>
+                        <tfoot id="foot-orcamento"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div id="lancamentos" class="section">
+                <h2>Lançamentos Gerais</h2>
+                <div class="input-group">
+                    <select id="input-tipo-lanc"><option value="realizado">Realizado</option><option value="orcado">Orçamento</option></select>
+                    <input type="date" id="input-data">
+                    <input type="text" id="input-desc" placeholder="Descrição" style="flex:1;">
+                    <select id="input-cat"><option value="">Categoria...</option></select>
+                    <input type="number" id="input-valor" placeholder="Valor" step="0.01">
+                    <button class="btn-action" id="btn-salvar-geral" onclick="adicionarLancamentoGeral()">Adicionar</button>
+                </div>
+                <table>
+                    <thead><tr><th style="text-align: left;">Data</th><th>Tipo</th><th style="text-align: left;">Descrição</th><th style="text-align: left;">Categoria</th><th style="text-align: left;">Valor</th><th style="text-align: center;">Ações</th></tr></thead>
+                    <tbody id="tabela-lancamentos"></tbody>
+                </table>
+            </div>
+
+            <div id="categorias" class="section">
+                <h2>Gestão de Categorias</h2>
+                <div class="input-group">
+                    <input type="text" id="cat-nome" placeholder="Nome da Categoria">
+                    <select id="cat-tipo"><option value="Receita">Receita</option><option value="Despesa">Despesa</option></select>
+                    <button class="btn-action" onclick="adicionarCategoria()">Adicionar Categoria</button>
+                </div>
+                <table style="max-width: 800px;">
+                    <thead><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead>
+                    <tbody id="tabela-categorias"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="investimentos-container" style="display:none;">
+            
+            <div class="global-filter">
+                <h3 style="margin-right: 1rem; font-size: 1.1rem;">Período Visualizado (Investimentos):</h3>
+                <label>De:</label> <input type="month" id="inv-filtro-inicio">
+                <label>Até:</label> <input type="month" id="inv-filtro-fim">
+                <button class="btn-action" onclick="atualizarInterfaceInvestimentos()" style="background: var(--primary);">Aplicar Filtro</button>
+                <div style="flex: 1; text-align: right;">
+                    <button class="btn-action" onclick="salvarAlteracoesNoDrive()" style="background-color: #10b981; font-size: 1rem;">💾 Guardar no Drive</button>
+                </div>
+            </div>
+
+            <div class="sub-nav">
+                <button class="active" onclick="switchInvTab('inv-visao', this)">Dashboard & Evolução</button>
+                <button onclick="switchInvTab('inv-cadastros', this)">Ativos & Cadastros</button>
+                <button onclick="switchInvTab('inv-lancamentos', this)">Lançar Saldos</button>
+            </div>
+
+            <div id="inv-visao" class="inv-tab active">
+                <div style="margin-bottom: 1rem;">
+                    <label>Filtrar Titular:</label>
+                    <select id="filtro-inv-dono" onchange="renderizarVisaoInvestimentos()" style="padding: 5px; border-radius: 4px;">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                
+                <div class="dashboard-cards">
+                    <div class="card"><h3>Patrimônio Total (Fim do Período)</h3><div class="value" style="color: var(--primary);" id="inv-total-patrimonio">0,00</div></div>
+                    <div class="card"><h3>Rendimento Bruto (Período)</h3><div class="value" style="color: var(--success);" id="inv-rendimento-periodo">0,00</div></div>
+                </div>
+
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 2rem;">
+                    <div style="flex: 1; min-width: 300px;">
+                        <canvas id="graficoInvComposicao"></canvas>
+                    </div>
+                    <div style="flex: 2; min-width: 400px;">
+                        <canvas id="graficoInvEvolucao"></canvas>
+                    </div>
+                </div>
+
+                <div class="tabelao-container" style="margin-top: 2rem;">
+                    <table id="tabela-inv-matriz">
+                        <thead id="head-inv-matriz"></thead>
+                        <tbody id="body-inv-matriz"></tbody>
+                        <tfoot id="foot-inv-matriz"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div id="inv-cadastros" class="inv-tab">
+                <h3>Cadastrar Novo Ativo</h3>
+                <div class="input-group">
+                    <input type="text" id="inv-cad-nome" placeholder="Nome do Ativo (ex: Tesouro Selic)">
+                    <input type="text" id="inv-cad-dono" placeholder="Titular (ex: João)">
+                    <input type="text" id="inv-cad-tipo" placeholder="Tipo (ex: Renda Fixa)">
+                    <button class="btn-action" onclick="adicionarAtivo()">Adicionar</button>
+                </div>
+                <table>
+                    <thead><tr><th style="text-align:left;">Nome do Ativo</th><th style="text-align:left;">Titular</th><th style="text-align:left;">Tipo</th><th style="text-align:center;">Ações</th></tr></thead>
+                    <tbody id="body-inv-ativos"></tbody>
+                </table>
+            </div>
+
+            <div id="inv-lancamentos" class="inv-tab">
+                <h3>Registrar Saldo Atualizado</h3>
+                <div class="input-group">
+                    <input type="month" id="inv-snap-data">
+                    <select id="inv-snap-ativo"><option value="">Selecione o Ativo...</option></select>
+                    <input type="number" id="inv-snap-valor" placeholder="Saldo Total Atualizado" step="0.01">
+                    <button class="btn-action" id="btn-salvar-snapshot" onclick="adicionarSnapshot()">Salvar Saldo</button>
+                </div>
+                <table>
+                    <thead><tr><th style="text-align:left;">Data Referência</th><th style="text-align:left;">Ativo</th><th style="text-align:left;">Titular</th><th style="text-align:right;">Saldo Informado</th><th style="text-align:center;">Ações</th></tr></thead>
+                    <tbody id="body-inv-snapshots"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="modalMatriz" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div>
+                    <h3 id="modalMatrizTitle">Detalhamento</h3>
+                    <p style="color:var(--text-light); font-size: 0.9rem;" id="modalMatrizSub">...</p>
+                </div>
+                <button class="modal-close" onclick="fecharModalMatriz()">&times;</button>
+            </div>
+            
+            <table style="min-width: 100%;">
+                <thead><tr><th style="text-align: left;">Data</th><th style="text-align: left;">Descrição</th><th class="text-right">Valor</th><th>Ações</th></tr></thead>
+                <tbody id="modalMatrizBody"></tbody>
+                <tfoot><tr><td colspan="2" class="text-right" style="font-weight: bold;">TOTAL CÉLULA:</td><td id="modalMatrizTotal" class="text-right" style="font-weight: bold; color:var(--primary);"></td><td></td></tr></tfoot>
+            </table>
+
+            <div class="form-modal">
+                <input type="date" id="mod-data">
+                <input type="text" id="mod-desc" placeholder="Nova Descrição">
+                <input type="number" id="mod-valor" placeholder="Valor" step="0.01">
+                <div style="display:flex; gap:5px;">
+                    <button class="btn-action" id="btn-salvar-modal" onclick="salvarLancamentoModal()">Adicionar</button>
+                    <button class="btn-warning" id="btn-replicar-modal" onclick="replicarModalParaFrente()" style="display:none;" title="Copia todos os itens desta célula para os próximos meses do filtro">Replicar p/ Frente</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        const CLIENT_ID = '82259659196-sabtae30i1ekucdj7cirerd81krsen2u.apps.googleusercontent.com'; // <-- INSIRA AQUI O SEU CLIENT ID
+        // ==========================================
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+        
+        let tokenClient, accessToken = null, arquivoAtualId = null; 
+        let chartInstance = null;
+        let chartInvComp = null;
+        let chartInvEvol = null;
+        let gapiInited = false;
+        let gisInited = false;
+        
+        let dadosAtuais = { 
+            configuracoes: { saldoBaseValor: 0, saldoBaseData: '' },
+            categorias: [], 
+            lancamentos: [],
+            investimentos: { ativos: [], snapshots: [] }
+        }; 
+
+        let contextoModal = { tipo: '', categoria: '', mesId: '', label: '' };
+        let idEditandoModal = null;
+        let idEditandoGlobal = null;
+        let idEditandoSnapshot = null;
+
+        // FORMATAÇÃO LIMPA: Exemplo "14.258,02"
+        const formatarMoeda = (val) => (parseFloat(val) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        
+        function showLoading(show) { document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; }
+        
+        function switchMainTab(tabId) {
+            document.querySelectorAll('.main-tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-btn-' + tabId).classList.add('active');
+            
+            document.getElementById('financas-container').style.display = (tabId === 'financas') ? 'block' : 'none';
+            document.getElementById('investimentos-container').style.display = (tabId === 'investimentos') ? 'block' : 'none';
+        }
+
+        function showSection(sectionId, btnElem) {
+            let container = btnElem.parentElement.parentElement;
+            container.querySelectorAll('.sub-nav button').forEach(btn => btn.classList.remove('active'));
+            container.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+            btnElem.classList.add('active');
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        function switchInvTab(tabId, btnElem) {
+            document.querySelectorAll('.inv-tab').forEach(t => t.style.display = 'none');
+            document.getElementById(tabId).style.display = 'block';
+            document.querySelectorAll('#investimentos-container .sub-nav button').forEach(b => b.classList.remove('active'));
+            btnElem.classList.add('active');
+        }
+
+        // Obtém o período filtrado para Finanças
+        function obterMesesFiltro() {
+            let inicio = document.getElementById('filtro-inicio').value; 
+            let fim = document.getElementById('filtro-fim').value; 
+            if(!inicio || !fim || inicio > fim) return [];
+            
+            let meses = [];
+            let dataAtual = new Date(inicio + "-02"); 
+            let dataFim = new Date(fim + "-02");
+            
+            while(dataAtual <= dataFim) {
+                let yyyy = dataAtual.getFullYear();
+                let mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
+                let id = `${yyyy}-${mm}`;
+                let labelRaw = dataAtual.toLocaleString('pt-PT', { month: 'short', year: 'numeric' }).replace(' de ', '/');
+                meses.push({ id, label: labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1) });
+                dataAtual.setMonth(dataAtual.getMonth() + 1);
+            }
+            return meses;
+        }
+
+        // Obtém o período filtrado EXCLUSIVO para Investimentos
+        function obterMesesFiltroInv() {
+            let inicio = document.getElementById('inv-filtro-inicio').value; 
+            let fim = document.getElementById('inv-filtro-fim').value; 
+            if(!inicio || !fim || inicio > fim) return [];
+            
+            let meses = [];
+            let dataAtual = new Date(inicio + "-02"); 
+            let dataFim = new Date(fim + "-02");
+            
+            while(dataAtual <= dataFim) {
+                let yyyy = dataAtual.getFullYear();
+                let mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
+                let id = `${yyyy}-${mm}`;
+                let labelRaw = dataAtual.toLocaleString('pt-PT', { month: 'short', year: 'numeric' }).replace(' de ', '/');
+                meses.push({ id, label: labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1) });
+                dataAtual.setMonth(dataAtual.getMonth() + 1);
+            }
+            return meses;
+        }
+
+        function calcularSaldoAnterior(limiteYYYYMM, tipoLancamento) {
+            let saldo = parseFloat(dadosAtuais.configuracoes.saldoBaseValor) || 0;
+            let dataBase = dadosAtuais.configuracoes.saldoBaseData || '1900-01';
+            if (limiteYYYYMM <= dataBase) return saldo;
+
+            return saldo + dadosAtuais.lancamentos
+                .filter(l => l.tipo === tipoLancamento && l.data.substring(0, 7) >= dataBase && l.data.substring(0, 7) < limiteYYYYMM)
+                .reduce((acc, l) => acc + l.valor, 0);
+        }
+
+        function atualizarConfiguracaoBase() {
+            dadosAtuais.configuracoes.saldoBaseData = document.getElementById('config-data-base').value;
+            dadosAtuais.configuracoes.saldoBaseValor = parseFloat(document.getElementById('config-saldo-base').value) || 0;
+            atualizarInterface();
+        }
+
+        // --- SISTEMA DE AUTENTICAÇÃO ---
+        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
+        async function initializeGapiClient() {
+            await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
+            gapiInited = true;
+        }
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID, 
+                scope: SCOPES,
+                callback: (resp) => {
+                    if (resp.error !== undefined) { alert("Erro de autenticação Google: " + resp.error); throw (resp); }
+                    accessToken = resp.access_token;
+                    document.getElementById('auth-btn').innerText = 'Sessão Iniciada';
+                    document.getElementById('auth-btn').style.backgroundColor = 'var(--success)';
+                    document.getElementById('auth-btn').style.color = 'white';
+                    document.getElementById('app-container').style.display = 'block';
+                    listarArquivos();
+                },
+            });
+            gisInited = true;
+        }
+        function handleAuthClick() { 
+            if (!CLIENT_ID || CLIENT_ID === 'COLOQUE_SEU_CLIENT_ID_AQUI') {
+                alert("ERRO: Precisa inserir o seu CLIENT_ID real na linha do código para o Google Drive funcionar.");
+                return;
+            }
+            if (gapiInited && gisInited) { tokenClient.requestAccessToken({prompt: 'consent'}); } 
+            else { alert("Os serviços do Google ainda estão a carregar. Por favor, aguarde uns segundos e tente novamente."); }
+        }
+
+        async function criarNovoArquivo() {
+            const nome = prompt("Qual o nome do novo controle? (Use prefixo 01, 02 para ordenar)");
+            if (!nome) return;
+            let dataHoje = new Date();
+            let mesAtualStr = `${dataHoje.getFullYear()}-${String(dataHoje.getMonth() + 1).padStart(2, '0')}`;
+            showLoading(true);
+            const estruturaInicial = { 
+                configuracoes: { saldoBaseValor: 0, saldoBaseData: mesAtualStr },
+                categorias: [{nome: 'Salário', tipo: 'Receita'}, {nome: 'Supermercado', tipo: 'Despesa'}], 
+                lancamentos: [],
+                investimentos: { ativos: [], snapshots: [] }
+            };
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify({ name: `AppFinanceiro_${nome}.json`, mimeType: 'application/json' })], {type: 'application/json'}));
+            form.append('file', new Blob([JSON.stringify(estruturaInicial)], {type: 'application/json'}));
+            try {
+                let res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: new Headers({ 'Authorization': `Bearer ${accessToken}` }), body: form });
+                if(res.ok) { alert('✅ Criado!'); listarArquivos(); }
+            } catch(e) { console.error(e); alert('Erro ao criar.'); }
+            showLoading(false);
+        }
+
+        async function listarArquivos() {
+            showLoading(true);
+            try {
+                let response = await gapi.client.drive.files.list({ 
+                    q: "name contains 'AppFinanceiro_' and trashed = false", 
+                    fields: 'files(id, name)',
+                    orderBy: 'name' 
+                });
+                const files = response.result.files;
+                const tabsContainer = document.getElementById('tabs-container');
+                tabsContainer.innerHTML = ''; 
+                
+                if (files.length === 0) { 
+                    tabsContainer.innerHTML = '<span style="color:white; padding-top:5px;">Nenhum arquivo. Crie um novo.</span>'; 
+                } else {
+                    files.forEach((file, index) => {
+                        let nomeControle = file.name.replace('AppFinanceiro_', '').replace('.json', '');
+                        let wrapper = document.createElement('div');
+                        wrapper.style.display = "flex";
+                        wrapper.style.alignItems = "center";
+                        let btn = document.createElement('button');
+                        btn.className = `control-tab ${index === 0 ? 'active' : ''}`;
+                        btn.innerText = nomeControle;
+                        
+                        btn.onclick = () => { 
+                            document.querySelectorAll('.control-tab').forEach(t => t.classList.remove('active'));
+                            btn.classList.add('active');
+                            carregarArquivo(file.id); 
+                        };
+                        
+                        let btnDel = document.createElement('button');
+                        btnDel.innerHTML = '×';
+                        btnDel.style.marginLeft = "5px";
+                        btnDel.style.background = "none";
+                        btnDel.style.border = "none";
+                        btnDel.style.color = "#f87171";
+                        btnDel.style.cursor = "pointer";
+                        btnDel.style.fontSize = "1.2rem";
+                        btnDel.onclick = (e) => { e.stopPropagation(); excluirControle(file.id, nomeControle); };
+
+                        wrapper.appendChild(btn);
+                        wrapper.appendChild(btnDel);
+                        tabsContainer.appendChild(wrapper);
+                    });
+                    carregarArquivo(files[0].id);
+                }
+            } catch (err) { console.error(err); }
+            showLoading(false);
+        }
+
+        async function carregarArquivo(fileId) {
+            showLoading(true);
+            arquivoAtualId = fileId;
+            try {
+                let response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+                if (response.ok) {
+                    let json = await response.json();
+                    if(!json.lancamentos) json.lancamentos = [];
+                    if(!json.investimentos) json.investimentos = { ativos: [], snapshots: [] };
+                    
+                    json.lancamentos.forEach(l => { if(!l.tipo) l.tipo = 'realizado'; });
+                    dadosAtuais = json;
+
+                    document.getElementById('config-data-base').value = dadosAtuais.configuracoes.saldoBaseData;
+                    document.getElementById('config-saldo-base').value = dadosAtuais.configuracoes.saldoBaseValor;
+                    
+                    // Inicializa ambos os filtros com os dados do arquivo
+                    document.getElementById('filtro-inicio').value = dadosAtuais.configuracoes.saldoBaseData; 
+                    document.getElementById('filtro-fim').value = `${parseInt(dadosAtuais.configuracoes.saldoBaseData.substring(0,4))}-12`;
+                    
+                    document.getElementById('inv-filtro-inicio').value = dadosAtuais.configuracoes.saldoBaseData; 
+                    document.getElementById('inv-filtro-fim').value = `${parseInt(dadosAtuais.configuracoes.saldoBaseData.substring(0,4))}-12`;
+                    
+                    atualizarInterface();
+                    atualizarInterfaceInvestimentos();
+                }
+            } catch (e) { console.error(e); }
+            showLoading(false);
+        }
+
+        async function excluirControle(fileId, nome) {
+            if(confirm(`Tem certeza que deseja apagar o controle "${nome}" permanentemente?`)) {
+                showLoading(true);
+                try {
+                    await gapi.client.drive.files.delete({ fileId: fileId });
+                    alert("Controle excluído.");
+                    listarArquivos();
+                } catch(e) { console.error(e); alert("Erro ao excluir arquivo."); }
+                showLoading(false);
+            }
+        }
+
+        async function salvarAlteracoesNoDrive() {
+            if(!arquivoAtualId) return;
+            showLoading(true);
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], {type: 'application/json'}));
+            form.append('file', new Blob([JSON.stringify(dadosAtuais)], {type: 'application/json'}));
+            try {
+                let res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${arquivoAtualId}?uploadType=multipart`, { method: 'PATCH', headers: new Headers({ 'Authorization': `Bearer ${accessToken}` }), body: form });
+                if(res.ok) alert("✅ Guardado no Drive com sucesso!");
+            } catch(e) { console.error(e); }
+            showLoading(false);
+        }
+
+        // Atualiza Apenas o Módulo de Gestão Financeira
+        function atualizarInterface() {
+            renderizarCategorias();
+            renderizarLancamentosGeral();
+            renderizarMatriz('orcado', 'tabela-orcamento', 'head-orcamento', 'body-orcamento', 'foot-orcamento');
+            renderizarMatriz('realizado', 'tabela-realizado', 'head-realizado', 'body-realizado', 'foot-realizado');
+            renderizarFluxoCaixa();
+            renderizarComparativo();
+            atualizarDashboard();
+        }
+
+        // --- MÓDULO DE INVESTIMENTOS ---
+        function adicionarAtivo() {
+            const nome = document.getElementById('inv-cad-nome').value.trim();
+            const dono = document.getElementById('inv-cad-dono').value.trim();
+            const tipo = document.getElementById('inv-cad-tipo').value.trim();
+            if(!nome || !dono || !tipo) return alert("Preencha todos os campos do ativo.");
+            dadosAtuais.investimentos.ativos.push({ id: Date.now().toString(), nome, dono, tipo });
+            
+            document.getElementById('inv-cad-nome').value = '';
+            document.getElementById('inv-cad-dono').value = '';
+            document.getElementById('inv-cad-tipo').value = '';
+            atualizarInterfaceInvestimentos();
+        }
+
+        function editarAtivo(id) {
+            let ativo = dadosAtuais.investimentos.ativos.find(a => a.id === id);
+            if(!ativo) return;
+            
+            let novoNome = prompt("Alterar Nome do Ativo:", ativo.nome);
+            if(novoNome === null || novoNome.trim() === '') return;
+            let novoDono = prompt("Alterar Titular:", ativo.dono);
+            if(novoDono === null || novoDono.trim() === '') return;
+            let novoTipo = prompt("Alterar Tipo:", ativo.tipo);
+            if(novoTipo === null || novoTipo.trim() === '') return;
+            
+            ativo.nome = novoNome.trim();
+            ativo.dono = novoDono.trim();
+            ativo.tipo = novoTipo.trim();
+            atualizarInterfaceInvestimentos();
+        }
+
+        function apagarAtivo(id) {
+            if(confirm("Deseja apagar este ativo? Os históricos de saldo também serão apagados.")) {
+                dadosAtuais.investimentos.ativos = dadosAtuais.investimentos.ativos.filter(a => a.id !== id);
+                dadosAtuais.investimentos.snapshots = dadosAtuais.investimentos.snapshots.filter(s => s.ativo_id !== id);
+                atualizarInterfaceInvestimentos();
+            }
+        }
+
+        function adicionarSnapshot() {
+            const data = document.getElementById('inv-snap-data').value;
+            const ativo_id = document.getElementById('inv-snap-ativo').value;
+            const valor = parseFloat(document.getElementById('inv-snap-valor').value);
+            if(!data || !ativo_id || isNaN(valor)) return alert("Preencha todos os campos do snapshot.");
+            
+            if(idEditandoSnapshot) {
+                let index = dadosAtuais.investimentos.snapshots.findIndex(s => s.id === idEditandoSnapshot);
+                if(index > -1) {
+                    dadosAtuais.investimentos.snapshots[index].data = data;
+                    dadosAtuais.investimentos.snapshots[index].ativo_id = ativo_id;
+                    dadosAtuais.investimentos.snapshots[index].valor = Math.abs(valor);
+                }
+                idEditandoSnapshot = null;
+                document.getElementById('btn-salvar-snapshot').innerText = "Salvar Saldo";
+            } else {
+                let index = dadosAtuais.investimentos.snapshots.findIndex(s => s.data === data && s.ativo_id === ativo_id);
+                if(index > -1) {
+                    dadosAtuais.investimentos.snapshots[index].valor = Math.abs(valor);
+                } else {
+                    dadosAtuais.investimentos.snapshots.push({ id: Date.now().toString(), data, ativo_id, valor: Math.abs(valor) });
+                }
+            }
+            
+            document.getElementById('inv-snap-valor').value = '';
+            atualizarInterfaceInvestimentos();
+        }
+
+        function prepararEdicaoSnapshot(id) {
+            let snap = dadosAtuais.investimentos.snapshots.find(s => s.id === id);
+            if(!snap) return;
+            document.getElementById('inv-snap-data').value = snap.data;
+            document.getElementById('inv-snap-ativo').value = snap.ativo_id;
+            document.getElementById('inv-snap-valor').value = Math.abs(snap.valor);
+            idEditandoSnapshot = id;
+            document.getElementById('btn-salvar-snapshot').innerText = "Atualizar Saldo";
+        }
+
+        function apagarSnapshot(id) {
+            dadosAtuais.investimentos.snapshots = dadosAtuais.investimentos.snapshots.filter(s => s.id !== id);
+            atualizarInterfaceInvestimentos();
+        }
+
+        // Atualiza Apenas o Módulo de Investimentos
+        function atualizarInterfaceInvestimentos() {
+            if (!dadosAtuais.investimentos) return;
+            let meses = obterMesesFiltroInv();
+            if(meses.length === 0) return;
+            let minYYYYMM = meses[0].id;
+            let maxYYYYMM = meses[meses.length - 1].id;
+            
+            const selAtivos = document.getElementById('inv-snap-ativo');
+            selAtivos.innerHTML = '<option value="">Selecione o Ativo...</option>';
+            
+            const selDono = document.getElementById('filtro-inv-dono');
+            let currentDono = selDono.value;
+            let donos = [...new Set(dadosAtuais.investimentos.ativos.map(a => a.dono))];
+            selDono.innerHTML = '<option value="">Todos</option>';
+            donos.forEach(d => { selDono.innerHTML += `<option value="${d}">${d}</option>`; });
+            selDono.value = currentDono;
+
+            const tAtivos = document.getElementById('body-inv-ativos');
+            tAtivos.innerHTML = '';
+            dadosAtuais.investimentos.ativos.forEach(a => {
+                selAtivos.innerHTML += `<option value="${a.id}">${a.nome} (${a.dono})</option>`;
+                tAtivos.innerHTML += `<tr>
+                    <td>${a.nome}</td><td>${a.dono}</td><td>${a.tipo}</td>
+                    <td style="text-align:center;">
+                        <button class="btn-edit" onclick="editarAtivo('${a.id}')">✎</button>
+                        <button class="btn-danger" onclick="apagarAtivo('${a.id}')">X</button>
+                    </td>
+                </tr>`;
+            });
+
+            const tSnaps = document.getElementById('body-inv-snapshots');
+            tSnaps.innerHTML = '';
+            
+            // Filtra os snapshots exibidos na tabela pelo período
+            let snapsFiltrados = dadosAtuais.investimentos.snapshots.filter(s => s.data >= minYYYYMM && s.data <= maxYYYYMM);
+            
+            snapsFiltrados.sort((a,b) => a.data > b.data ? -1 : 1).forEach(s => {
+                let ativo = dadosAtuais.investimentos.ativos.find(a => a.id === s.ativo_id);
+                if(ativo) {
+                    tSnaps.innerHTML += `<tr>
+                        <td>${s.data.split('-').reverse().join('/')}</td>
+                        <td>${ativo.nome}</td><td>${ativo.dono}</td>
+                        <td class="text-right">${formatarMoeda(s.valor)}</td>
+                        <td style="text-align:center;">
+                            <button class="btn-edit" onclick="prepararEdicaoSnapshot('${s.id}')">✎</button>
+                            <button class="btn-danger" onclick="apagarSnapshot('${s.id}')">X</button>
+                        </td>
+                    </tr>`;
+                }
+            });
+
+            renderizarVisaoInvestimentos();
+        }
+
+        function renderizarVisaoInvestimentos() {
+            let meses = obterMesesFiltroInv();
+            if(meses.length === 0) return;
+            let donoFiltro = document.getElementById('filtro-inv-dono').value;
+
+            let ativosValidos = dadosAtuais.investimentos.ativos;
+            if(donoFiltro) ativosValidos = ativosValidos.filter(a => a.dono === donoFiltro);
+
+            const thead = document.getElementById('head-inv-matriz');
+            const tbody = document.getElementById('body-inv-matriz');
+            const tfoot = document.getElementById('foot-inv-matriz');
+            thead.innerHTML = `<tr><th style="text-align:left;">Ativo</th>` + meses.map(m => `<th>${m.label}</th>`).join('') + `</tr>`;
+            tbody.innerHTML = '';
+
+            let somasMensais = new Array(meses.length).fill(0);
+            let valoresUltimoMesParaPizza = [];
+            let labelsUltimoMesParaPizza = [];
+
+            ativosValidos.forEach(ativo => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `<td><strong>${ativo.nome}</strong> <span style="font-size:0.7rem;color:#888;">(${ativo.tipo})</span></td>`;
+                
+                meses.forEach((m, idx) => {
+                    let snapMsg = dadosAtuais.investimentos.snapshots.find(s => s.ativo_id === ativo.id && s.data === m.id);
+                    let valorNoMes = snapMsg ? snapMsg.valor : 0; 
+                    
+                    tr.innerHTML += `<td class="text-right">${formatarMoeda(valorNoMes)}</td>`;
+                    somasMensais[idx] += valorNoMes;
+
+                    if(idx === meses.length - 1 && valorNoMes > 0) {
+                        valoresUltimoMesParaPizza.push(valorNoMes);
+                        labelsUltimoMesParaPizza.push(ativo.nome);
+                    }
+                });
+                tbody.appendChild(tr);
+            });
+
+            tfoot.innerHTML = `<tr class="row-summary"><td>TOTAL PATRIMÔNIO</td>` + somasMensais.map(s => `<td class="text-right">${formatarMoeda(s)}</td>`).join('') + `</tr>`;
+
+            let patrimonioFinal = somasMensais[somasMensais.length - 1] || 0;
+            let patrimonioInicial = somasMensais[0] || 0;
+            let rendimento = patrimonioFinal - patrimonioInicial;
+
+            document.getElementById('inv-total-patrimonio').innerText = formatarMoeda(patrimonioFinal);
+            document.getElementById('inv-rendimento-periodo').innerText = formatarMoeda(rendimento);
+
+            if(chartInvComp) chartInvComp.destroy();
+            chartInvComp = new Chart(document.getElementById('graficoInvComposicao').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: labelsUltimoMesParaPizza,
+                    datasets: [{ data: valoresUltimoMesParaPizza, backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f43f5e'] }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'right' }, title: {display: true, text: 'Composição no Último Mês'} } }
+            });
+
+            if(chartInvEvol) chartInvEvol.destroy();
+            chartInvEvol = new Chart(document.getElementById('graficoInvEvolucao').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: meses.map(m => m.label),
+                    datasets: [{ label: 'Evolução do Patrimônio', data: somasMensais, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.2)', fill: true, tension: 0.3 }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { title: {display: true, text: 'Evolução Total (Período)' } } }
+            });
+        }
+
+        // --- CATEGORIAS E LANÇAMENTOS GERAIS ---
+        function adicionarCategoria() {
+            const nome = document.getElementById('cat-nome').value.trim();
+            const tipo = document.getElementById('cat-tipo').value;
+            if(!nome) return alert("Digite o nome.");
+            dadosAtuais.categorias.push({ nome, tipo });
+            document.getElementById('cat-nome').value = '';
+            atualizarInterface();
+        }
+        function editarCategoria(index) {
+            let cat = dadosAtuais.categorias[index];
+            let novoNome = prompt("Alterar nome da categoria:", cat.nome);
+            if(novoNome && novoNome.trim() !== "" && novoNome !== cat.nome) {
+                let nomeAntigo = cat.nome;
+                cat.nome = novoNome.trim();
+                dadosAtuais.lancamentos.forEach(l => { if(l.categoria === nomeAntigo) l.categoria = cat.nome; });
+                atualizarInterface();
+            }
+        }
+        function apagarCategoria(index) {
+            if(confirm("Apagar categoria? (Lançamentos associados manterão o nome antigo)")) { 
+                dadosAtuais.categorias.splice(index, 1); 
+                atualizarInterface(); 
+            }
+        }
+        function renderizarCategorias() {
+            const tbody = document.getElementById('tabela-categorias');
+            const select = document.getElementById('input-cat');
+            tbody.innerHTML = ''; select.innerHTML = '<option value="">Categoria...</option>';
+            dadosAtuais.categorias.forEach((cat, index) => {
+                tbody.innerHTML += `<tr><td>${cat.nome}</td><td>${cat.tipo}</td><td>
+                    <button class="btn-edit" onclick="editarCategoria(${index})">Editar</button> 
+                    <button class="btn-danger" onclick="apagarCategoria(${index})">Apagar</button>
+                </td></tr>`;
+                select.innerHTML += `<option value="${cat.nome}">${cat.nome} (${cat.tipo})</option>`;
+            });
+        }
+
+        function adicionarLancamentoGeral() {
+            const tipoLanc = document.getElementById('input-tipo-lanc').value;
+            const data = document.getElementById('input-data').value;
+            const desc = document.getElementById('input-desc').value;
+            const catNome = document.getElementById('input-cat').value;
+            let valorInput = parseFloat(document.getElementById('input-valor').value);
+
+            if(!data || !desc || !catNome || isNaN(valorInput)) return alert("Preencha tudo.");
+            
+            const categoriaObj = dadosAtuais.categorias.find(c => c.nome === catNome);
+            valorInput = (categoriaObj && categoriaObj.tipo === 'Despesa') ? -Math.abs(valorInput) : Math.abs(valorInput);
+
+            if (idEditandoGlobal) {
+                let index = dadosAtuais.lancamentos.findIndex(l => l.id === idEditandoGlobal);
+                if(index > -1) {
+                    dadosAtuais.lancamentos[index].tipo = tipoLanc;
+                    dadosAtuais.lancamentos[index].data = data;
+                    dadosAtuais.lancamentos[index].descricao = desc;
+                    dadosAtuais.lancamentos[index].categoria = catNome;
+                    dadosAtuais.lancamentos[index].valor = valorInput;
+                }
+                idEditandoGlobal = null;
+                document.getElementById('btn-salvar-geral').innerText = "Adicionar";
+            } else {
+                dadosAtuais.lancamentos.push({ id: Date.now().toString(), data, descricao: desc, categoria: catNome, valor: valorInput, tipo: tipoLanc });
+            }
+            
+            document.getElementById('input-desc').value = ''; document.getElementById('input-valor').value = '';
+            atualizarInterface();
+        }
+        
+        function prepararEdicaoGlobal(id) {
+            let item = dadosAtuais.lancamentos.find(l => l.id === id);
+            if(!item) return;
+            document.getElementById('input-tipo-lanc').value = item.tipo;
+            document.getElementById('input-data').value = item.data;
+            document.getElementById('input-desc').value = item.descricao;
+            document.getElementById('input-cat').value = item.categoria;
+            document.getElementById('input-valor').value = Math.abs(item.valor);
+            idEditandoGlobal = id;
+            document.getElementById('btn-salvar-geral').innerText = "Atualizar Lançamento";
+            window.scrollTo(0, document.getElementById('lancamentos').offsetTop);
+        }
+
+        function apagarLancamentoGlobal(id) {
+            if(confirm("Apagar movimentação?")) { dadosAtuais.lancamentos = dadosAtuais.lancamentos.filter(l => l.id !== id); atualizarInterface(); }
+        }
+
+        function renderizarLancamentosGeral() {
+            let meses = obterMesesFiltro();
+            const tbody = document.getElementById('tabela-lancamentos');
+            tbody.innerHTML = '';
+            if(meses.length === 0) return;
+            let minYYYYMM = meses[0].id; let maxYYYYMM = meses[meses.length - 1].id;
+
+            dadosAtuais.lancamentos
+                .filter(l => l.tipo !== 'fechamento' && l.data.substring(0, 7) >= minYYYYMM && l.data.substring(0, 7) <= maxYYYYMM)
+                .sort((a,b) => new Date(a.data) - new Date(b.data))
+                .forEach(lanc => {
+                    let cor = lanc.valor < 0 ? 'var(--danger)' : 'var(--success)';
+                    let badgeTipo = lanc.tipo === 'orcado' ? '<span style="background:#fef08a; padding:2px 5px; border-radius:4px; font-size:0.8rem; color:black;">Orçamento</span>' : '<span style="background:#bbf7d0; padding:2px 5px; border-radius:4px; font-size:0.8rem; color:black;">Realizado</span>';
+                    tbody.innerHTML += `<tr>
+                        <td>${lanc.data.split('-').reverse().join('/')}</td>
+                        <td>${badgeTipo}</td>
+                        <td>${lanc.descricao}</td>
+                        <td>${lanc.categoria}</td>
+                        <td style="color: ${cor}; font-weight: bold;">${formatarMoeda(Math.abs(lanc.valor))}</td>
+                        <td style="text-align: center;">
+                            <button class="btn-edit" onclick="prepararEdicaoGlobal('${lanc.id}')">✎</button>
+                            <button class="btn-danger" onclick="apagarLancamentoGlobal('${lanc.id}')">X</button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        // --- MATRIZES & FECHAMENTO ---
+        function renderizarMatriz(tipoMatriz, tableId, headId, bodyId, footId) {
+            let meses = obterMesesFiltro();
+            const thead = document.getElementById(headId);
+            const tbody = document.getElementById(bodyId);
+            const tfoot = document.getElementById(footId);
+            thead.innerHTML = ''; tbody.innerHTML = ''; tfoot.innerHTML = '';
+            if(meses.length === 0) return;
+
+            let trHead = document.createElement('tr');
+            trHead.innerHTML = `<th style="text-align: left; min-width: 200px;">Categoria</th>`;
+            meses.forEach(m => trHead.innerHTML += `<th>${m.label}</th>`);
+            thead.appendChild(trHead);
+
+            let totaisReceitas = new Array(meses.length).fill(0);
+            let totaisDespesas = new Array(meses.length).fill(0);
+
+            dadosAtuais.categorias.forEach(cat => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `<td style="font-weight: bold;">${cat.nome} <span style="font-size:0.7rem; color:#888;">(${cat.tipo})</span></td>`;
+
+                meses.forEach((m, index) => {
+                    let lancamentosCelula = dadosAtuais.lancamentos.filter(l => l.tipo === tipoMatriz && l.categoria === cat.nome && l.data.substring(0,7) === m.id);
+                    let soma = lancamentosCelula.reduce((acc, curr) => acc + curr.valor, 0);
+                    
+                    if(cat.tipo === 'Receita') totaisReceitas[index] += soma;
+                    else totaisDespesas[index] += Math.abs(soma);
+
+                    let displayStr = (soma === 0 && tipoMatriz === 'realizado') ? '-' : formatarMoeda(Math.abs(soma));
+                    tr.innerHTML += `<td><span class="clickable-cell" onclick="abrirModalMatriz('${tipoMatriz}', '${cat.nome}', '${m.id}', '${m.label}')">${displayStr}</span></td>`;
+                });
+                tbody.appendChild(tr);
+            });
+
+            let saldosIniciais = new Array(meses.length).fill(0);
+            let saldosFinais = new Array(meses.length).fill(0);
+            saldosIniciais[0] = calcularSaldoAnterior(meses[0].id, tipoMatriz);
+
+            for(let i = 0; i < meses.length; i++) {
+                if(i > 0) saldosIniciais[i] = saldosFinais[i-1];
+                saldosFinais[i] = saldosIniciais[i] + totaisReceitas[i] - totaisDespesas[i];
+            }
+
+            tfoot.innerHTML = `
+                <tr class="row-summary"><td>Saldo Inicial do Mês</td>${saldosIniciais.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
+                <tr class="row-summary" style="color: var(--success);"><td>(+) Total Receitas</td>${totaisReceitas.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
+                <tr class="row-summary" style="color: var(--danger);"><td>(-) Total Despesas</td>${totaisDespesas.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
+                <tr class="row-summary" style="background-color: #e2e8f0;"><td>= Saldo Final do Mês</td>${saldosFinais.map(v => `<td class="text-right" style="color: ${v >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(v)}</td>`).join('')}</tr>
+            `;
+
+            if (tipoMatriz === 'realizado') {
+                let rowFechamento = '<tr class="row-summary"><td style="color: #6b7280; font-style: italic;">📥 Lançamentos p/ Fechar (Físico)</td>';
+                let rowDiferenca = '<tr class="row-summary"><td style="color: #3730a3;">⚖️ Saldo de Fechamento (Diferença)</td>';
+                
+                for(let i = 0; i < meses.length; i++) {
+                    let m = meses[i];
+                    let somaFechamento = dadosAtuais.lancamentos.filter(l => l.tipo === 'fechamento' && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                    let displayFech = somaFechamento === 0 ? '-' : formatarMoeda(somaFechamento);
+                    
+                    rowFechamento += `<td class="text-right"><span class="clickable-cell" style="color:#6b7280;" onclick="abrirModalMatriz('fechamento', 'Fechamento de Caixa', '${m.id}', '${m.label}')">${displayFech}</span></td>`;
+                    
+                    let diff = saldosFinais[i] + somaFechamento;
+                    if(Math.abs(diff) < 0.01) diff = 0;
+                    
+                    let isFechamentoZerado = (saldosFinais[i] === 0 && somaFechamento === 0);
+                    let diffColor = diff === 0 ? 'var(--primary)' : 'var(--danger)'; 
+                    let diffText = diff === 0 ? '0,00' : formatarMoeda(diff);
+                    
+                    if(isFechamentoZerado) { diffColor = 'var(--text-light)'; diffText = '-'; }
+                    
+                    rowDiferenca += `<td class="text-right" style="color: ${diffColor}; font-weight: 900; background-color: ${diff===0 && !isFechamentoZerado ? '#eff6ff' : ''}">${diffText}</td>`;
+                }
+                
+                rowFechamento += '</tr>';
+                rowDiferenca += '</tr>';
+                tfoot.innerHTML += rowFechamento + rowDiferenca;
+            }
+        }
+
+        // --- LÓGICA DO MODAL DAS MATRIZES E FECHAMENTO ---
+        function abrirModalMatriz(tipo, categoria, mesId, labelMes) {
+            contextoModal = { tipo, categoria, mesId, label: labelMes };
+            document.getElementById('modalMatrizTitle').innerText = `${tipo === 'orcado' ? 'Orçamento' : (tipo === 'fechamento' ? 'Fechamento' : 'Realizado')} - ${categoria}`;
+            document.getElementById('modalMatrizSub').innerText = `Mês: ${labelMes}`;
+            
+            document.getElementById('mod-data').value = `${mesId}-01`;
+            document.getElementById('mod-desc').value = '';
+            document.getElementById('mod-valor').value = '';
+            idEditandoModal = null;
+            document.getElementById('btn-salvar-modal').innerText = "Adicionar";
+            
+            document.getElementById('btn-replicar-modal').style.display = (tipo === 'orcado') ? 'block' : 'none';
+
+            renderizarItensModal();
+            document.getElementById('modalMatriz').style.display = 'flex';
+        }
+
+        function fecharModalMatriz() { document.getElementById('modalMatriz').style.display = 'none'; }
+
+        function renderizarItensModal() {
+            const tbody = document.getElementById('modalMatrizBody');
+            tbody.innerHTML = '';
+            let itens = dadosAtuais.lancamentos.filter(l => l.tipo === contextoModal.tipo && l.categoria === contextoModal.categoria && l.data.substring(0,7) === contextoModal.mesId);
+            let total = 0;
+            itens.sort((a,b) => new Date(a.data) - new Date(b.data)).forEach(lanc => {
+                total += lanc.valor;
+                
+                let corValor = lanc.valor < 0 ? 'var(--danger)' : 'var(--success)';
+                let displayValor = formatarMoeda(contextoModal.tipo === 'fechamento' ? lanc.valor : Math.abs(lanc.valor));
+
+                tbody.innerHTML += `<tr>
+                    <td>${lanc.data.split('-').reverse().join('/')}</td>
+                    <td>${lanc.descricao}</td>
+                    <td class="text-right" style="color:${corValor}">${displayValor}</td>
+                    <td class="text-right">
+                        <button class="btn-edit" onclick="prepararEdicaoModal('${lanc.id}')">✎</button>
+                        <button class="btn-danger" onclick="excluirItemModal('${lanc.id}')">X</button>
+                    </td>
+                </tr>`;
+            });
+            
+            let colorTotal = (contextoModal.tipo === 'fechamento' && total < 0) ? 'var(--danger)' : 'var(--primary)';
+            document.getElementById('modalMatrizTotal').innerText = formatarMoeda(contextoModal.tipo === 'fechamento' ? total : Math.abs(total));
+            document.getElementById('modalMatrizTotal').style.color = colorTotal;
+        }
+
+        function salvarLancamentoModal() {
+            const data = document.getElementById('mod-data').value;
+            const desc = document.getElementById('mod-desc').value;
+            let valor = parseFloat(document.getElementById('mod-valor').value);
+            if(!data || !desc || isNaN(valor)) return alert("Preencha todos os campos.");
+
+            if (contextoModal.tipo !== 'fechamento') {
+                const catObj = dadosAtuais.categorias.find(c => c.nome === contextoModal.categoria);
+                valor = (catObj && catObj.tipo === 'Despesa') ? -Math.abs(valor) : Math.abs(valor);
+            }
+
+            if(idEditandoModal) {
+                let index = dadosAtuais.lancamentos.findIndex(l => l.id === idEditandoModal);
+                if(index > -1) {
+                    dadosAtuais.lancamentos[index].data = data;
+                    dadosAtuais.lancamentos[index].descricao = desc;
+                    dadosAtuais.lancamentos[index].valor = valor;
+                }
+                idEditandoModal = null;
+                document.getElementById('btn-salvar-modal').innerText = "Adicionar";
+            } else {
+                dadosAtuais.lancamentos.push({ id: Date.now().toString(), data, descricao: desc, categoria: contextoModal.categoria, valor, tipo: contextoModal.tipo });
+            }
+            
+            document.getElementById('mod-desc').value = '';
+            document.getElementById('mod-valor').value = '';
+            renderizarItensModal();
+            atualizarInterface();
+        }
+
+        function prepararEdicaoModal(id) {
+            let item = dadosAtuais.lancamentos.find(l => l.id === id);
+            if(!item) return;
+            document.getElementById('mod-data').value = item.data;
+            document.getElementById('mod-desc').value = item.descricao;
+            document.getElementById('mod-valor').value = (contextoModal.tipo === 'fechamento') ? item.valor : Math.abs(item.valor);
+            idEditandoModal = id;
+            document.getElementById('btn-salvar-modal').innerText = "Atualizar";
+        }
+
+        function excluirItemModal(id) {
+            dadosAtuais.lancamentos = dadosAtuais.lancamentos.filter(l => l.id !== id);
+            renderizarItensModal();
+            atualizarInterface();
+        }
+
+        function replicarModalParaFrente() {
+            let meses = obterMesesFiltro();
+            let idxAtual = meses.findIndex(m => m.id === contextoModal.mesId);
+            if(idxAtual === -1) return;
+            
+            let itensAtuais = dadosAtuais.lancamentos.filter(l => l.tipo === contextoModal.tipo && l.categoria === contextoModal.categoria && l.data.substring(0,7) === contextoModal.mesId);
+            if(itensAtuais.length === 0) return alert("Nenhum lançamento nesta célula para replicar.");
+
+            let replicados = 0;
+            for(let i = idxAtual + 1; i < meses.length; i++) {
+                let mesAlvo = meses[i].id;
+                itensAtuais.forEach(item => {
+                    let partes = item.data.split('-');
+                    let novaData = `${mesAlvo}-${partes[2]}`; 
+                    dadosAtuais.lancamentos.push({ ...item, id: Date.now().toString() + Math.random(), data: novaData });
+                    replicados++;
+                });
+            }
+            alert(`${replicados} itens foram criados nos meses futuros do filtro!`);
+            atualizarInterface();
+        }
+
+        function replicarOrcadoParaRealizadoGlobal() {
+            if(!confirm("Atenção: Isso vai copiar TODOS os lançamentos orçados para a visão Realizado. Continuar?")) return;
+            let orcados = dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado');
+            orcados.forEach(o => { dadosAtuais.lancamentos.push({ ...o, id: Date.now().toString() + Math.random(), tipo: 'realizado' }); });
+            atualizarInterface();
+            alert("Orçamento replicado com sucesso!");
+        }
+
+        // --- FLUXO E DASHBOARD ---
+        function renderizarFluxoCaixa() {
+            let meses = obterMesesFiltro();
+            const tbody = document.getElementById('body-fluxo-caixa');
+            tbody.innerHTML = '';
+            if(meses.length === 0) return;
+            let saldoInicialAtual = calcularSaldoAnterior(meses[0].id, 'realizado');
+
+            meses.forEach(m => {
+                let entradasMes = 0; let saidasMes = 0;
+                dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id).forEach(l => {
+                    if(l.valor > 0) entradasMes += l.valor; else saidasMes += Math.abs(l.valor);
+                });
+                let saldoFinalMes = saldoInicialAtual + entradasMes - saidasMes;
+
+                tbody.innerHTML += `
+                    <tr style="font-weight:bold; background:var(--summary-bg);">
+                        <td><span style="cursor:pointer" onclick="toggleLinhas('${m.id}')">➕</span> ${m.label}</td>
+                        <td class="text-right">${formatarMoeda(saldoInicialAtual)}</td>
+                        <td class="text-right" style="color: var(--success);">${formatarMoeda(entradasMes)}</td>
+                        <td class="text-right" style="color: var(--danger);">${formatarMoeda(saidasMes)}</td>
+                        <td class="text-right" style="font-weight: bold; color: ${saldoFinalMes >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(saldoFinalMes)}</td>
+                    </tr>
+                `;
+                
+                dadosAtuais.categorias.forEach(cat => {
+                    let catTotal = dadosAtuais.lancamentos
+                        .filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id)
+                        .reduce((acc, curr) => acc + curr.valor, 0);
+                    
+                    if (catTotal !== 0) {
+                        let tdEntrada = '<td></td>';
+                        let tdSaida = '<td></td>';
+                        if (cat.tipo === 'Receita') {
+                            tdEntrada = `<td class="text-right"><span class="clickable-cell" style="color: var(--success);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(catTotal)}</span></td>`;
+                        } else {
+                            tdSaida = `<td class="text-right"><span class="clickable-cell" style="color: var(--danger);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(Math.abs(catTotal))}</span></td>`;
+                        }
+                        tbody.innerHTML += `
+                            <tr class="cat-row-${m.id}" style="display:none; font-size: 0.8rem; background: #fff;">
+                                <td>&nbsp;&nbsp;${cat.nome}</td><td></td>${tdEntrada}${tdSaida}<td></td>
+                            </tr>`;
+                    }
+                });
+                saldoInicialAtual = saldoFinalMes; 
+            });
+        }
+        
+        function toggleLinhas(mesId) {
+            document.querySelectorAll(`.cat-row-${mesId}`).forEach(tr => { tr.style.display = (tr.style.display === 'none' ? 'table-row' : 'none'); });
+        }
+
+        function renderizarComparativo() {
+            const tbody = document.getElementById('body-comparativo');
+            tbody.innerHTML = '';
+            let meses = obterMesesFiltro();
+            if(meses.length === 0) return;
+
+            dadosAtuais.categorias.forEach(cat => {
+                let previsto = 0, realizado = 0;
+                meses.forEach(m => {
+                    previsto += dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                    realizado += dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                });
+
+                let dispPrev = Math.abs(previsto);
+                let dispReal = Math.abs(realizado);
+                let diferenca = cat.tipo === 'Receita' ? (dispReal - dispPrev) : (dispPrev - dispReal);
+                let corDiff = diferenca >= 0 ? 'var(--success)' : 'var(--danger)';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="font-weight: bold;">${cat.nome}</td>
+                        <td class="text-right">${formatarMoeda(dispPrev)}</td>
+                        <td class="text-right">${formatarMoeda(dispReal)}</td>
+                        <td class="text-right" style="color: ${corDiff}; font-weight: bold;">${formatarMoeda(diferenca)}</td>
+                    </tr>`;
+            });
+        }
+
+        function atualizarDashboard() {
+            let meses = obterMesesFiltro();
+            if(meses.length === 0) return;
+
+            document.getElementById('dash-label-periodo').innerText = `${meses[0].label} até ${meses[meses.length-1].label}`;
+
+            let totalEntradas = 0, totalSaidas = 0;
+            dadosAtuais.lancamentos
+                .filter(l => l.tipo === 'realizado' && l.data.substring(0, 7) >= meses[0].id && l.data.substring(0, 7) <= meses[meses.length - 1].id)
+                .forEach(l => { if(l.valor > 0) totalEntradas += l.valor; else totalSaidas += Math.abs(l.valor); });
+            
+            let saldoFinalPer = calcularSaldoAnterior(meses[0].id, 'realizado') + (totalEntradas - totalSaidas);
+
+            document.getElementById('dash-receitas').innerText = formatarMoeda(totalEntradas);
+            document.getElementById('dash-despesas').innerText = formatarMoeda(totalSaidas);
+            let saldoElem = document.getElementById('dash-saldo');
+            saldoElem.innerText = formatarMoeda(saldoFinalPer);
+            saldoElem.style.color = saldoFinalPer >= 0 ? 'var(--primary)' : 'var(--danger)';
+
+            let labels = meses.map(m => m.label);
+            let saldosFinais = [];
+            let entradasMensais = [];
+            let saidasMensais = [];
+            
+            let saldoAcumulado = calcularSaldoAnterior(meses[0].id, 'realizado');
+
+            meses.forEach(m => {
+                let movs = dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id);
+                let e = movs.filter(l => l.valor > 0).reduce((acc, l) => acc + l.valor, 0);
+                let s = movs.filter(l => l.valor < 0).reduce((acc, l) => acc + Math.abs(l.valor), 0);
+                
+                entradasMensais.push(e);
+                saidasMensais.push(s);
+                saldoAcumulado += (e - s);
+                saldosFinais.push(saldoAcumulado);
+            });
+
+            if(chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(document.getElementById('graficoEvolucao').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { type: 'bar', label: 'Entradas Realizadas', data: entradasMensais, backgroundColor: '#10b981' },
+                        { type: 'bar', label: 'Saídas Realizadas', data: saidasMensais, backgroundColor: '#ef4444' },
+                        { type: 'line', label: 'Saldo Final Realizado', data: saldosFinais, borderColor: '#2563eb', fill: false, tension: 0.3 }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+        }
+    </script>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
