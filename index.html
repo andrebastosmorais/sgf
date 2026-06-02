@@ -813,7 +813,6 @@
             atualizarInterface();
         }
         function editarCategoria(index) {
-            // Utilizamos os dados originais (dadosAtuais.categorias) que podem não estar ordenados de A a Z
             let cat = dadosAtuais.categorias[index];
             let novoNome = prompt("Alterar nome da categoria:", cat.nome);
             if(novoNome && novoNome.trim() !== "" && novoNome !== cat.nome) {
@@ -834,11 +833,10 @@
             const select = document.getElementById('input-cat');
             tbody.innerHTML = ''; select.innerHTML = '<option value="">Categoria...</option>';
             
-            // Para manter a coerência de A-Z no dropdown, vamos criar uma cópia ordenada:
-            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+            // Ordenação Alfanumérica (Natural Sorting)
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             categoriasOrdenadas.forEach((cat) => {
-                // Recupera o index original para que as funções Editar/Apagar funcionem corretamente na lista mãe
                 let indexOriginal = dadosAtuais.categorias.indexOf(cat);
                 
                 tbody.innerHTML += `<tr><td>${cat.nome}</td><td>${cat.tipo}</td><td>
@@ -941,8 +939,8 @@
             let totaisReceitas = new Array(meses.length).fill(0);
             let totaisDespesas = new Array(meses.length).fill(0);
 
-            // Ordenação Alfabética A-Z
-            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+            // Ordenação Alfanumérica (Natural Sorting)
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             categoriasOrdenadas.forEach(cat => {
                 let tr = document.createElement('tr');
@@ -1137,8 +1135,8 @@
             if(meses.length === 0) return;
             let saldoInicialAtual = calcularSaldoAnterior(meses[0].id, 'realizado');
 
-            // Ordenação Alfabética A-Z no detalhamento do fluxo de caixa também
-            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+            // Ordenação Alfanumérica (Natural Sorting)
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             meses.forEach(m => {
                 let entradasMes = 0; let saidasMes = 0;
@@ -1190,8 +1188,8 @@
             let meses = obterMesesFiltro();
             if(meses.length === 0) return;
 
-            // Ordenação Alfabética A-Z
-            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome));
+            // Ordenação Alfanumérica (Natural Sorting)
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             categoriasOrdenadas.forEach(cat => {
                 let previsto = 0, realizado = 0;
