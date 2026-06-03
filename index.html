@@ -331,7 +331,7 @@
 
     <script>
         // ==========================================
-        const CLIENT_ID = '82259659196-sabtae30i1ekucdj7cirerd81krsen2u.apps.googleusercontent.com'; // <-- INSIRA AQUI O SEU CLIENT ID
+        const CLIENT_ID = 'COLOQUE_SEU_CLIENT_ID_AQUI'; // <-- INSIRA AQUI O SEU CLIENT ID
         // ==========================================
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         
@@ -829,4 +829,91 @@
 
         function replicarModalParaFrente() {
             let meses = obterMesesFiltro(), idxAtual = meses.findIndex(m => m.id === contextoModal.mesId); if(idxAtual === -1) return;
-            let itensAtuais = dadosAtuais.lancamentos.filter(l => l.tipo ===
+            let itensAtuais = dadosAtuais.lancamentos.filter(l => l.tipo === contextoModal.tipo && l.categoria === contextoModal.categoria && l.data.substring(0,7) === contextoModal.mesId);
+            if(itensAtuais.length === 0) return alert("Nenhum lançamento nesta célula para replicar.");
+            let replicados = 0;
+            for(let i = idxAtual + 1; i < meses.length; i++) {
+                let mesAlvo = meses[i].id;
+                itensAtuais.forEach(item => { let novaData = `${mesAlvo}-${item.data.split('-')[2]}`; dadosAtuais.lancamentos.push({ ...item, id: Date.now().toString() + Math.random(), data: novaData }); replicados++; });
+            }
+            alert(`${replicados} itens foram criados nos meses futuros do filtro!`); atualizarInterface(); registrarAlteracao();
+        }
+
+        function replicarOrcadoParaRealizadoGlobal() {
+            if(!confirm("Atenção: Isto vai copiar TODOS os lançamentos orçados para a visão Realizado. Continuar?")) return;
+            let orcados = dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado');
+            orcados.forEach(o => { dadosAtuais.lancamentos.push({ ...o, id: Date.now().toString() + Math.random(), tipo: 'realizado' }); });
+            atualizarInterface(); alert("Orçamento replicado com sucesso!"); registrarAlteracao();
+        }
+
+        function renderizarFluxoCaixa() {
+            let meses = obterMesesFiltro(); const tbody = document.getElementById('body-fluxo-caixa'); tbody.innerHTML = '';
+            if(meses.length === 0) return; let saldoInicialAtual = calcularSaldoAnterior(meses[0].id, 'realizado');
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
+
+            meses.forEach(m => {
+                let entradasMes = 0; let saidasMes = 0;
+                dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id).forEach(l => { if(l.valor > 0) entradasMes += l.valor; else saidasMes += Math.abs(l.valor); });
+                let saldoFinalMes = saldoInicialAtual + entradasMes - saidasMes;
+
+                tbody.innerHTML += `<tr style="font-weight:bold; background:var(--summary-bg);"><td><span style="cursor:pointer" onclick="toggleLinhas('${m.id}')">➕</span> ${m.label}</td><td class="text-right">${formatarMoeda(saldoInicialAtual)}</td><td class="text-right" style="color: var(--success);">${formatarMoeda(entradasMes)}</td><td class="text-right" style="color: var(--danger);">${formatarMoeda(saidasMes)}</td><td class="text-right" style="font-weight: bold; color: ${saldoFinalMes >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(saldoFinalMes)}</td></tr>`;
+                
+                categoriasOrdenadas.forEach(cat => {
+                    let catTotal = dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                    if (catTotal !== 0) {
+                        let tdEntrada = '<td></td>', tdSaida = '<td></td>';
+                        if (cat.tipo === 'Receita') tdEntrada = `<td class="text-right"><span class="clickable-cell" style="color: var(--success);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(catTotal)}</span></td>`;
+                        else tdSaida = `<td class="text-right"><span class="clickable-cell" style="color: var(--danger);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(Math.abs(catTotal))}</span></td>`;
+                        tbody.innerHTML += `<tr class="cat-row-${m.id}" style="display:none; font-size: 0.8rem; background: #fff;"><td>&nbsp;&nbsp;${cat.nome}</td><td></td>${tdEntrada}${tdSaida}<td></td></tr>`;
+                    }
+                });
+                saldoInicialAtual = saldoFinalMes; 
+            });
+        }
+        
+        function toggleLinhas(mesId) { document.querySelectorAll(`.cat-row-${mesId}`).forEach(tr => { tr.style.display = (tr.style.display === 'none' ? 'table-row' : 'none'); }); }
+
+        function renderizarComparativo() {
+            const tbody = document.getElementById('body-comparativo'); tbody.innerHTML = '';
+            let meses = obterMesesFiltro(); if(meses.length === 0) return;
+            let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
+
+            categoriasOrdenadas.forEach(cat => {
+                let previsto = 0, realizado = 0;
+                meses.forEach(m => {
+                    previsto += dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                    realizado += dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                });
+                let dispPrev = Math.abs(previsto), dispReal = Math.abs(realizado), diferenca = cat.tipo === 'Receita' ? (dispReal - dispPrev) : (dispPrev - dispReal);
+                let corDiff = diferenca >= 0 ? 'var(--success)' : 'var(--danger)';
+                tbody.innerHTML += `<tr><td style="font-weight: bold;">${cat.nome}</td><td class="text-right">${formatarMoeda(dispPrev)}</td><td class="text-right">${formatarMoeda(dispReal)}</td><td class="text-right" style="color: ${corDiff}; font-weight: bold;">${formatarMoeda(diferenca)}</td></tr>`;
+            });
+        }
+
+        function atualizarDashboard() {
+            let meses = obterMesesFiltro(); if(meses.length === 0) return;
+            document.getElementById('dash-label-periodo').innerText = `${meses[0].label} até ${meses[meses.length-1].label}`;
+
+            let totalEntradas = 0, totalSaidas = 0;
+            dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0, 7) >= meses[0].id && l.data.substring(0, 7) <= meses[meses.length - 1].id).forEach(l => { if(l.valor > 0) totalEntradas += l.valor; else totalSaidas += Math.abs(l.valor); });
+            let saldoFinalPer = calcularSaldoAnterior(meses[0].id, 'realizado') + (totalEntradas - totalSaidas);
+
+            document.getElementById('dash-receitas').innerText = formatarMoeda(totalEntradas); document.getElementById('dash-despesas').innerText = formatarMoeda(totalSaidas);
+            let saldoElem = document.getElementById('dash-saldo'); saldoElem.innerText = formatarMoeda(saldoFinalPer); saldoElem.style.color = saldoFinalPer >= 0 ? 'var(--primary)' : 'var(--danger)';
+
+            let labels = meses.map(m => m.label), saldosFinais = [], entradasMensais = [], saidasMensais = [];
+            let saldoAcumulado = calcularSaldoAnterior(meses[0].id, 'realizado');
+            meses.forEach(m => {
+                let movs = dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id);
+                let e = movs.filter(l => l.valor > 0).reduce((acc, l) => acc + l.valor, 0), s = movs.filter(l => l.valor < 0).reduce((acc, l) => acc + Math.abs(l.valor), 0);
+                entradasMensais.push(e); saidasMensais.push(s); saldoAcumulado += (e - s); saldosFinais.push(saldoAcumulado);
+            });
+
+            if(chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(document.getElementById('graficoEvolucao').getContext('2d'), { type: 'bar', data: { labels: labels, datasets: [{ type: 'bar', label: 'Entradas Realizadas', data: entradasMensais, backgroundColor: '#10b981' }, { type: 'bar', label: 'Saídas Realizadas', data: saidasMensais, backgroundColor: '#ef4444' }, { type: 'line', label: 'Saldo Final Realizado', data: saldosFinais, borderColor: '#2563eb', fill: false, tension: 0.3 }] }, options: { responsive: true, scales: { y: { beginAtZero: true } } } });
+        }
+    </script>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
