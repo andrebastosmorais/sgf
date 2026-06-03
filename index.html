@@ -48,7 +48,7 @@
         .card h3 { color: var(--text-light); font-size: 0.9rem; margin-bottom: 0.5rem; }
         .card .value { font-size: 1.5rem; font-weight: bold; }
 
-        .btn-action { background-color: var(--success); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .btn-action { background-color: var(--success); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.3s; }
         .btn-warning { background-color: var(--warning); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
         .btn-danger { background-color: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
         .btn-edit { background-color: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
@@ -110,7 +110,7 @@
                 <label>Até:</label> <input type="month" id="filtro-fim">
                 <button class="btn-action" onclick="atualizarInterface()" style="background: var(--primary);">Aplicar Filtro</button>
                 <div style="flex: 1; text-align: right;">
-                    <button class="btn-action" onclick="salvarAlteracoesNoDrive()" style="background-color: #10b981; font-size: 1rem;">💾 Guardar no Drive</button>
+                    <button class="btn-action btn-save-drive" onclick="salvarAlteracoesNoDrive()" style="background-color: #10b981; font-size: 1rem;">💾 Guardar no Drive</button>
                 </div>
             </div>
 
@@ -219,7 +219,7 @@
                 <label>Até:</label> <input type="month" id="inv-filtro-fim">
                 <button class="btn-action" onclick="atualizarInterfaceInvestimentos()" style="background: var(--primary);">Aplicar Filtro</button>
                 <div style="flex: 1; text-align: right;">
-                    <button class="btn-action" onclick="salvarAlteracoesNoDrive()" style="background-color: #10b981; font-size: 1rem;">💾 Guardar no Drive</button>
+                    <button class="btn-action btn-save-drive" onclick="salvarAlteracoesNoDrive()" style="background-color: #10b981; font-size: 1rem;">💾 Guardar no Drive</button>
                 </div>
             </div>
 
@@ -280,7 +280,7 @@
                     <input type="month" id="inv-snap-data">
                     <select id="inv-snap-ativo"><option value="">Selecione o Ativo...</option></select>
                     <input type="number" id="inv-snap-valor" placeholder="Saldo Total Atualizado" step="0.01">
-                    <button class="btn-action" id="btn-salvar-snapshot" onclick="adicionarSnapshot()">Salvar Saldo</button>
+                    <button class="btn-action" id="btn-salvar-snapshot" onclick="adicionarSnapshot()">Gravar Saldo</button>
                 </div>
                 <table>
                     <thead><tr><th style="text-align:left;">Data Referência</th><th style="text-align:left;">Ativo</th><th style="text-align:left;">Titular</th><th style="text-align:right;">Saldo Informado</th><th style="text-align:center;">Ações</th></tr></thead>
@@ -321,38 +321,54 @@
 
     <script>
         // ==========================================
-        const CLIENT_ID = '82259659196-sabtae30i1ekucdj7cirerd81krsen2u.apps.googleusercontent.com'; // <-- INSIRA AQUI O SEU CLIENT ID
+        const CLIENT_ID = 'COLOQUE_SEU_CLIENT_ID_AQUI'; // <-- INSIRA AQUI O SEU CLIENT ID
         // ==========================================
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         
         let tokenClient, accessToken = null, arquivoAtualId = null; 
-        let chartInstance = null;
-        let chartInvComp = null;
-        let chartInvEvol = null;
-        let gapiInited = false;
-        let gisInited = false;
+        let chartInstance = null, chartInvComp = null, chartInvEvol = null;
+        let gapiInited = false, gisInited = false;
         
+        // --- VARIÁVEIS DO NOVO SISTEMA DE AUTO-SAVE ---
+        let dadosNaoSalvos = false;
+        let timerAutoSave = null;
+
         let dadosAtuais = { 
             configuracoes: { saldoBaseValor: 0, saldoBaseData: '' },
-            categorias: [], 
-            lancamentos: [],
-            investimentos: { ativos: [], snapshots: [] }
+            categorias: [], lancamentos: [], investimentos: { ativos: [], snapshots: [] }
         }; 
 
         let contextoModal = { tipo: '', categoria: '', mesId: '', label: '' };
-        let idEditandoModal = null;
-        let idEditandoGlobal = null;
-        let idEditandoSnapshot = null;
+        let idEditandoModal = null, idEditandoGlobal = null, idEditandoSnapshot = null;
 
-        // FORMATAÇÃO LIMPA: Exemplo "14.258,02"
         const formatarMoeda = (val) => (parseFloat(val) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        
         function showLoading(show) { document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; }
         
+        // --- 1. ALERTA ANTI-ACIDENTE ANTES DE FECHAR A PÁGINA ---
+        window.addEventListener('beforeunload', function (e) {
+            if (dadosNaoSalvos) {
+                e.preventDefault();
+                e.returnValue = 'Tem alterações não guardadas no Google Drive. Se sair agora, irá perdê-las!';
+            }
+        });
+
+        // --- 2. GATILHO INTELIGENTE DE AUTO-SAVE ---
+        function registrarAlteracao() {
+            dadosNaoSalvos = true;
+            document.querySelectorAll('.btn-save-drive').forEach(btn => {
+                btn.innerText = "⚠️ A aguardar... (Auto-save)";
+                btn.style.backgroundColor = "#f59e0b"; // amarelo
+            });
+            
+            clearTimeout(timerAutoSave);
+            timerAutoSave = setTimeout(() => {
+                salvarAlteracoesNoDrive(true); // "true" significa que vai guardar em modo silencioso
+            }, 2000); // Aguarda 2 segundos após parar de clicar/escrever para enviar à nuvem
+        }
+
         function switchMainTab(tabId) {
             document.querySelectorAll('.main-tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-btn-' + tabId).classList.add('active');
-            
             document.getElementById('financas-container').style.display = (tabId === 'financas') ? 'block' : 'none';
             document.getElementById('investimentos-container').style.display = (tabId === 'investimentos') ? 'block' : 'none';
         }
@@ -372,19 +388,13 @@
             btnElem.classList.add('active');
         }
 
-        // Obtém o período filtrado para Finanças
         function obterMesesFiltro() {
             let inicio = document.getElementById('filtro-inicio').value; 
             let fim = document.getElementById('filtro-fim').value; 
             if(!inicio || !fim || inicio > fim) return [];
-            
-            let meses = [];
-            let dataAtual = new Date(inicio + "-02"); 
-            let dataFim = new Date(fim + "-02");
-            
+            let meses = [], dataAtual = new Date(inicio + "-02"), dataFim = new Date(fim + "-02");
             while(dataAtual <= dataFim) {
-                let yyyy = dataAtual.getFullYear();
-                let mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
+                let yyyy = dataAtual.getFullYear(), mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
                 let id = `${yyyy}-${mm}`;
                 let labelRaw = dataAtual.toLocaleString('pt-PT', { month: 'short', year: 'numeric' }).replace(' de ', '/');
                 meses.push({ id, label: labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1) });
@@ -393,19 +403,13 @@
             return meses;
         }
 
-        // Obtém o período filtrado EXCLUSIVO para Investimentos
         function obterMesesFiltroInv() {
             let inicio = document.getElementById('inv-filtro-inicio').value; 
             let fim = document.getElementById('inv-filtro-fim').value; 
             if(!inicio || !fim || inicio > fim) return [];
-            
-            let meses = [];
-            let dataAtual = new Date(inicio + "-02"); 
-            let dataFim = new Date(fim + "-02");
-            
+            let meses = [], dataAtual = new Date(inicio + "-02"), dataFim = new Date(fim + "-02");
             while(dataAtual <= dataFim) {
-                let yyyy = dataAtual.getFullYear();
-                let mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
+                let yyyy = dataAtual.getFullYear(), mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
                 let id = `${yyyy}-${mm}`;
                 let labelRaw = dataAtual.toLocaleString('pt-PT', { month: 'short', year: 'numeric' }).replace(' de ', '/');
                 meses.push({ id, label: labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1) });
@@ -418,28 +422,22 @@
             let saldo = parseFloat(dadosAtuais.configuracoes.saldoBaseValor) || 0;
             let dataBase = dadosAtuais.configuracoes.saldoBaseData || '1900-01';
             if (limiteYYYYMM <= dataBase) return saldo;
-
-            return saldo + dadosAtuais.lancamentos
-                .filter(l => l.tipo === tipoLancamento && l.data.substring(0, 7) >= dataBase && l.data.substring(0, 7) < limiteYYYYMM)
-                .reduce((acc, l) => acc + l.valor, 0);
+            return saldo + dadosAtuais.lancamentos.filter(l => l.tipo === tipoLancamento && l.data.substring(0, 7) >= dataBase && l.data.substring(0, 7) < limiteYYYYMM).reduce((acc, l) => acc + l.valor, 0);
         }
 
         function atualizarConfiguracaoBase() {
             dadosAtuais.configuracoes.saldoBaseData = document.getElementById('config-data-base').value;
             dadosAtuais.configuracoes.saldoBaseValor = parseFloat(document.getElementById('config-saldo-base').value) || 0;
             atualizarInterface();
+            registrarAlteracao(); // Aciona auto-save
         }
 
-        // --- SISTEMA DE AUTENTICAÇÃO ---
+        // --- SISTEMA DE AUTENTICAÇÃO E DRIVE ---
         function gapiLoaded() { gapi.load('client', initializeGapiClient); }
-        async function initializeGapiClient() {
-            await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
-            gapiInited = true;
-        }
+        async function initializeGapiClient() { await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] }); gapiInited = true; }
         function gisLoaded() {
             tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID, 
-                scope: SCOPES,
+                client_id: CLIENT_ID, scope: SCOPES,
                 callback: (resp) => {
                     if (resp.error !== undefined) { alert("Erro de autenticação Google: " + resp.error); throw (resp); }
                     accessToken = resp.access_token;
@@ -453,26 +451,16 @@
             gisInited = true;
         }
         function handleAuthClick() { 
-            if (!CLIENT_ID || CLIENT_ID === 'COLOQUE_SEU_CLIENT_ID_AQUI') {
-                alert("ERRO: Precisa inserir o seu CLIENT_ID real na linha do código para o Google Drive funcionar.");
-                return;
-            }
-            if (gapiInited && gisInited) { tokenClient.requestAccessToken({prompt: 'consent'}); } 
-            else { alert("Os serviços do Google ainda estão a carregar. Por favor, aguarde uns segundos e tente novamente."); }
+            if (!CLIENT_ID || CLIENT_ID === 'COLOQUE_SEU_CLIENT_ID_AQUI') return alert("ERRO: Precisa inserir o seu CLIENT_ID real na linha do código para o Google Drive funcionar.");
+            if (gapiInited && gisInited) tokenClient.requestAccessToken({prompt: 'consent'}); else alert("Por favor, aguarde uns segundos e tente novamente.");
         }
 
         async function criarNovoArquivo() {
             const nome = prompt("Qual o nome do novo controle? (Use prefixo 01, 02 para ordenar)");
             if (!nome) return;
-            let dataHoje = new Date();
-            let mesAtualStr = `${dataHoje.getFullYear()}-${String(dataHoje.getMonth() + 1).padStart(2, '0')}`;
+            let mesAtualStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
             showLoading(true);
-            const estruturaInicial = { 
-                configuracoes: { saldoBaseValor: 0, saldoBaseData: mesAtualStr },
-                categorias: [{nome: 'Salário', tipo: 'Receita'}, {nome: 'Supermercado', tipo: 'Despesa'}], 
-                lancamentos: [],
-                investimentos: { ativos: [], snapshots: [] }
-            };
+            const estruturaInicial = { configuracoes: { saldoBaseValor: 0, saldoBaseData: mesAtualStr }, categorias: [{nome: 'Salário', tipo: 'Receita'}, {nome: 'Supermercado', tipo: 'Despesa'}], lancamentos: [], investimentos: { ativos: [], snapshots: [] } };
             const form = new FormData();
             form.append('metadata', new Blob([JSON.stringify({ name: `AppFinanceiro_${nome}.json`, mimeType: 'application/json' })], {type: 'application/json'}));
             form.append('file', new Blob([JSON.stringify(estruturaInicial)], {type: 'application/json'}));
@@ -486,46 +474,24 @@
         async function listarArquivos() {
             showLoading(true);
             try {
-                let response = await gapi.client.drive.files.list({ 
-                    q: "name contains 'AppFinanceiro_' and trashed = false", 
-                    fields: 'files(id, name)',
-                    orderBy: 'name' 
-                });
+                let response = await gapi.client.drive.files.list({ q: "name contains 'AppFinanceiro_' and trashed = false", fields: 'files(id, name)', orderBy: 'name' });
                 const files = response.result.files;
                 const tabsContainer = document.getElementById('tabs-container');
                 tabsContainer.innerHTML = ''; 
-                
-                if (files.length === 0) { 
-                    tabsContainer.innerHTML = '<span style="color:white; padding-top:5px;">Nenhum arquivo. Crie um novo.</span>'; 
-                } else {
+                if (files.length === 0) { tabsContainer.innerHTML = '<span style="color:white; padding-top:5px;">Nenhum arquivo. Crie um novo.</span>'; } 
+                else {
                     files.forEach((file, index) => {
                         let nomeControle = file.name.replace('AppFinanceiro_', '').replace('.json', '');
                         let wrapper = document.createElement('div');
-                        wrapper.style.display = "flex";
-                        wrapper.style.alignItems = "center";
+                        wrapper.style.display = "flex"; wrapper.style.alignItems = "center";
                         let btn = document.createElement('button');
-                        btn.className = `control-tab ${index === 0 ? 'active' : ''}`;
-                        btn.innerText = nomeControle;
-                        
-                        btn.onclick = () => { 
-                            document.querySelectorAll('.control-tab').forEach(t => t.classList.remove('active'));
-                            btn.classList.add('active');
-                            carregarArquivo(file.id); 
-                        };
+                        btn.className = `control-tab ${index === 0 ? 'active' : ''}`; btn.innerText = nomeControle;
+                        btn.onclick = () => { document.querySelectorAll('.control-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active'); carregarArquivo(file.id); };
                         
                         let btnDel = document.createElement('button');
-                        btnDel.innerHTML = '×';
-                        btnDel.style.marginLeft = "5px";
-                        btnDel.style.background = "none";
-                        btnDel.style.border = "none";
-                        btnDel.style.color = "#f87171";
-                        btnDel.style.cursor = "pointer";
-                        btnDel.style.fontSize = "1.2rem";
+                        btnDel.innerHTML = '×'; btnDel.style.marginLeft = "5px"; btnDel.style.background = "none"; btnDel.style.border = "none"; btnDel.style.color = "#f87171"; btnDel.style.cursor = "pointer"; btnDel.style.fontSize = "1.2rem";
                         btnDel.onclick = (e) => { e.stopPropagation(); excluirControle(file.id, nomeControle); };
-
-                        wrapper.appendChild(btn);
-                        wrapper.appendChild(btnDel);
-                        tabsContainer.appendChild(wrapper);
+                        wrapper.appendChild(btn); wrapper.appendChild(btnDel); tabsContainer.appendChild(wrapper);
                     });
                     carregarArquivo(files[0].id);
                 }
@@ -542,22 +508,22 @@
                     let json = await response.json();
                     if(!json.lancamentos) json.lancamentos = [];
                     if(!json.investimentos) json.investimentos = { ativos: [], snapshots: [] };
-                    
                     json.lancamentos.forEach(l => { if(!l.tipo) l.tipo = 'realizado'; });
                     dadosAtuais = json;
-
+                    
                     document.getElementById('config-data-base').value = dadosAtuais.configuracoes.saldoBaseData;
                     document.getElementById('config-saldo-base').value = dadosAtuais.configuracoes.saldoBaseValor;
-                    
-                    // Inicializa ambos os filtros com os dados do arquivo
                     document.getElementById('filtro-inicio').value = dadosAtuais.configuracoes.saldoBaseData; 
                     document.getElementById('filtro-fim').value = `${parseInt(dadosAtuais.configuracoes.saldoBaseData.substring(0,4))}-12`;
-                    
                     document.getElementById('inv-filtro-inicio').value = dadosAtuais.configuracoes.saldoBaseData; 
                     document.getElementById('inv-filtro-fim').value = `${parseInt(dadosAtuais.configuracoes.saldoBaseData.substring(0,4))}-12`;
                     
-                    atualizarInterface();
-                    atualizarInterfaceInvestimentos();
+                    // Resetamos as flags de segurança ao carregar um novo arquivo da nuvem
+                    dadosNaoSalvos = false;
+                    clearTimeout(timerAutoSave);
+                    document.querySelectorAll('.btn-save-drive').forEach(btn => { btn.innerText = "💾 Guardar no Drive"; btn.style.backgroundColor = "#10b981"; });
+
+                    atualizarInterface(); atualizarInterfaceInvestimentos();
                 }
             } catch (e) { console.error(e); }
             showLoading(false);
@@ -566,68 +532,86 @@
         async function excluirControle(fileId, nome) {
             if(confirm(`Tem certeza que deseja apagar o controle "${nome}" permanentemente?`)) {
                 showLoading(true);
-                try {
-                    await gapi.client.drive.files.delete({ fileId: fileId });
-                    alert("Controle excluído.");
-                    listarArquivos();
-                } catch(e) { console.error(e); alert("Erro ao excluir arquivo."); }
+                try { await gapi.client.drive.files.delete({ fileId: fileId }); alert("Controle excluído."); listarArquivos(); } catch(e) { console.error(e); alert("Erro ao excluir arquivo."); }
                 showLoading(false);
             }
         }
 
-        async function salvarAlteracoesNoDrive() {
+        // --- 3. NOVA FUNÇÃO DE GUARDAR (ACEITA MODO SILENCIOSO DO AUTO-SAVE) ---
+        async function salvarAlteracoesNoDrive(silencioso = false) {
             if(!arquivoAtualId) return;
-            showLoading(true);
+            
+            document.querySelectorAll('.btn-save-drive').forEach(btn => {
+                btn.innerText = "⏳ A gravar no Drive...";
+                btn.style.backgroundColor = "#f59e0b"; // Laranja/Amarelo
+            });
+
+            if(!silencioso) showLoading(true); // Só trava a tela se o utilizador clicar no botão manualmente
+            
             const form = new FormData();
             form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], {type: 'application/json'}));
             form.append('file', new Blob([JSON.stringify(dadosAtuais)], {type: 'application/json'}));
+            
             try {
                 let res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${arquivoAtualId}?uploadType=multipart`, { method: 'PATCH', headers: new Headers({ 'Authorization': `Bearer ${accessToken}` }), body: form });
-                if(res.ok) alert("✅ Guardado no Drive com sucesso!");
-            } catch(e) { console.error(e); }
-            showLoading(false);
+                if(res.ok) {
+                    dadosNaoSalvos = false; // Como guardou, desliga o alerta anti-acidente
+                    document.querySelectorAll('.btn-save-drive').forEach(btn => {
+                        btn.innerText = "✅ Guardado";
+                        btn.style.backgroundColor = "#10b981"; // Verde
+                    });
+                    
+                    // Volta o botão ao texto normal após 3 segundos, se nenhuma alteração nova acontecer nesse intervalo
+                    setTimeout(() => {
+                        if(!dadosNaoSalvos) {
+                            document.querySelectorAll('.btn-save-drive').forEach(btn => {
+                                btn.innerText = "💾 Guardar no Drive"; 
+                                btn.style.backgroundColor = "#10b981";
+                            });
+                        }
+                    }, 3000);
+                    
+                    if(!silencioso) alert("✅ Guardado no Google Drive com sucesso!");
+                } else {
+                    throw new Error("Erro de resposta do servidor");
+                }
+            } catch(e) { 
+                console.error(e); 
+                document.querySelectorAll('.btn-save-drive').forEach(btn => {
+                    btn.innerText = "❌ Sem Ligação. Tente Novamente";
+                    btn.style.backgroundColor = "var(--danger)"; // Vermelho
+                });
+                if(!silencioso) alert("Erro ao guardar! Verifique a sua ligação à internet.");
+            }
+            if(!silencioso) showLoading(false);
         }
 
-        // Atualiza Apenas o Módulo de Gestão Financeira
         function atualizarInterface() {
-            renderizarCategorias();
-            renderizarLancamentosGeral();
+            renderizarCategorias(); renderizarLancamentosGeral();
             renderizarMatriz('orcado', 'tabela-orcamento', 'head-orcamento', 'body-orcamento', 'foot-orcamento');
             renderizarMatriz('realizado', 'tabela-realizado', 'head-realizado', 'body-realizado', 'foot-realizado');
-            renderizarFluxoCaixa();
-            renderizarComparativo();
-            atualizarDashboard();
+            renderizarFluxoCaixa(); renderizarComparativo(); atualizarDashboard();
         }
 
         // --- MÓDULO DE INVESTIMENTOS ---
         function adicionarAtivo() {
-            const nome = document.getElementById('inv-cad-nome').value.trim();
-            const dono = document.getElementById('inv-cad-dono').value.trim();
-            const tipo = document.getElementById('inv-cad-tipo').value.trim();
+            const nome = document.getElementById('inv-cad-nome').value.trim(); const dono = document.getElementById('inv-cad-dono').value.trim(); const tipo = document.getElementById('inv-cad-tipo').value.trim();
             if(!nome || !dono || !tipo) return alert("Preencha todos os campos do ativo.");
             dadosAtuais.investimentos.ativos.push({ id: Date.now().toString(), nome, dono, tipo });
-            
-            document.getElementById('inv-cad-nome').value = '';
-            document.getElementById('inv-cad-dono').value = '';
-            document.getElementById('inv-cad-tipo').value = '';
+            document.getElementById('inv-cad-nome').value = ''; document.getElementById('inv-cad-dono').value = ''; document.getElementById('inv-cad-tipo').value = '';
             atualizarInterfaceInvestimentos();
+            registrarAlteracao(); // Aciona auto-save
         }
 
         function editarAtivo(id) {
             let ativo = dadosAtuais.investimentos.ativos.find(a => a.id === id);
             if(!ativo) return;
-            
-            let novoNome = prompt("Alterar Nome do Ativo:", ativo.nome);
-            if(novoNome === null || novoNome.trim() === '') return;
-            let novoDono = prompt("Alterar Titular:", ativo.dono);
-            if(novoDono === null || novoDono.trim() === '') return;
-            let novoTipo = prompt("Alterar Tipo:", ativo.tipo);
-            if(novoTipo === null || novoTipo.trim() === '') return;
-            
-            ativo.nome = novoNome.trim();
-            ativo.dono = novoDono.trim();
-            ativo.tipo = novoTipo.trim();
+            let novoNome = prompt("Alterar Nome do Ativo:", ativo.nome); if(novoNome === null || novoNome.trim() === '') return;
+            let novoDono = prompt("Alterar Titular:", ativo.dono); if(novoDono === null || novoDono.trim() === '') return;
+            let novoTipo = prompt("Alterar Tipo:", ativo.tipo); if(novoTipo === null || novoTipo.trim() === '') return;
+            ativo.nome = novoNome.trim(); ativo.dono = novoDono.trim(); ativo.tipo = novoTipo.trim();
             atualizarInterfaceInvestimentos();
+            registrarAlteracao(); // Aciona auto-save
         }
 
         function apagarAtivo(id) {
@@ -635,225 +619,142 @@
                 dadosAtuais.investimentos.ativos = dadosAtuais.investimentos.ativos.filter(a => a.id !== id);
                 dadosAtuais.investimentos.snapshots = dadosAtuais.investimentos.snapshots.filter(s => s.ativo_id !== id);
                 atualizarInterfaceInvestimentos();
+                registrarAlteracao(); // Aciona auto-save
             }
         }
 
         function adicionarSnapshot() {
-            const data = document.getElementById('inv-snap-data').value;
-            const ativo_id = document.getElementById('inv-snap-ativo').value;
-            const valor = parseFloat(document.getElementById('inv-snap-valor').value);
+            const data = document.getElementById('inv-snap-data').value; const ativo_id = document.getElementById('inv-snap-ativo').value; const valor = parseFloat(document.getElementById('inv-snap-valor').value);
             if(!data || !ativo_id || isNaN(valor)) return alert("Preencha todos os campos do snapshot.");
             
             if(idEditandoSnapshot) {
                 let index = dadosAtuais.investimentos.snapshots.findIndex(s => s.id === idEditandoSnapshot);
-                if(index > -1) {
-                    dadosAtuais.investimentos.snapshots[index].data = data;
-                    dadosAtuais.investimentos.snapshots[index].ativo_id = ativo_id;
-                    dadosAtuais.investimentos.snapshots[index].valor = Math.abs(valor);
-                }
-                idEditandoSnapshot = null;
-                document.getElementById('btn-salvar-snapshot').innerText = "Salvar Saldo";
+                if(index > -1) { dadosAtuais.investimentos.snapshots[index].data = data; dadosAtuais.investimentos.snapshots[index].ativo_id = ativo_id; dadosAtuais.investimentos.snapshots[index].valor = Math.abs(valor); }
+                idEditandoSnapshot = null; document.getElementById('btn-salvar-snapshot').innerText = "Gravar Saldo";
             } else {
                 let index = dadosAtuais.investimentos.snapshots.findIndex(s => s.data === data && s.ativo_id === ativo_id);
-                if(index > -1) {
-                    dadosAtuais.investimentos.snapshots[index].valor = Math.abs(valor);
-                } else {
-                    dadosAtuais.investimentos.snapshots.push({ id: Date.now().toString(), data, ativo_id, valor: Math.abs(valor) });
-                }
+                if(index > -1) dadosAtuais.investimentos.snapshots[index].valor = Math.abs(valor); else dadosAtuais.investimentos.snapshots.push({ id: Date.now().toString(), data, ativo_id, valor: Math.abs(valor) });
             }
-            
             document.getElementById('inv-snap-valor').value = '';
             atualizarInterfaceInvestimentos();
+            registrarAlteracao(); // Aciona auto-save
         }
 
         function prepararEdicaoSnapshot(id) {
             let snap = dadosAtuais.investimentos.snapshots.find(s => s.id === id);
             if(!snap) return;
-            document.getElementById('inv-snap-data').value = snap.data;
-            document.getElementById('inv-snap-ativo').value = snap.ativo_id;
-            document.getElementById('inv-snap-valor').value = Math.abs(snap.valor);
-            idEditandoSnapshot = id;
-            document.getElementById('btn-salvar-snapshot').innerText = "Atualizar Saldo";
+            document.getElementById('inv-snap-data').value = snap.data; document.getElementById('inv-snap-ativo').value = snap.ativo_id; document.getElementById('inv-snap-valor').value = Math.abs(snap.valor);
+            idEditandoSnapshot = id; document.getElementById('btn-salvar-snapshot').innerText = "Atualizar Saldo";
         }
 
         function apagarSnapshot(id) {
             dadosAtuais.investimentos.snapshots = dadosAtuais.investimentos.snapshots.filter(s => s.id !== id);
             atualizarInterfaceInvestimentos();
+            registrarAlteracao(); // Aciona auto-save
         }
 
-        // Atualiza Apenas o Módulo de Investimentos
         function atualizarInterfaceInvestimentos() {
             if (!dadosAtuais.investimentos) return;
-            let meses = obterMesesFiltroInv();
-            if(meses.length === 0) return;
-            let minYYYYMM = meses[0].id;
-            let maxYYYYMM = meses[meses.length - 1].id;
+            let meses = obterMesesFiltroInv(); if(meses.length === 0) return;
+            let minYYYYMM = meses[0].id; let maxYYYYMM = meses[meses.length - 1].id;
             
-            const selAtivos = document.getElementById('inv-snap-ativo');
-            selAtivos.innerHTML = '<option value="">Selecione o Ativo...</option>';
-            
+            const selAtivos = document.getElementById('inv-snap-ativo'); selAtivos.innerHTML = '<option value="">Selecione o Ativo...</option>';
             const selDono = document.getElementById('filtro-inv-dono');
-            let currentDono = selDono.value;
-            let donos = [...new Set(dadosAtuais.investimentos.ativos.map(a => a.dono))];
+            let currentDono = selDono.value, donos = [...new Set(dadosAtuais.investimentos.ativos.map(a => a.dono))];
             selDono.innerHTML = '<option value="">Todos</option>';
-            donos.forEach(d => { selDono.innerHTML += `<option value="${d}">${d}</option>`; });
-            selDono.value = currentDono;
+            donos.forEach(d => { selDono.innerHTML += `<option value="${d}">${d}</option>`; }); selDono.value = currentDono;
 
-            const tAtivos = document.getElementById('body-inv-ativos');
-            tAtivos.innerHTML = '';
+            const tAtivos = document.getElementById('body-inv-ativos'); tAtivos.innerHTML = '';
             dadosAtuais.investimentos.ativos.forEach(a => {
                 selAtivos.innerHTML += `<option value="${a.id}">${a.nome} (${a.dono})</option>`;
-                tAtivos.innerHTML += `<tr>
-                    <td>${a.nome}</td><td>${a.dono}</td><td>${a.tipo}</td>
-                    <td style="text-align:center;">
-                        <button class="btn-edit" onclick="editarAtivo('${a.id}')">✎</button>
-                        <button class="btn-danger" onclick="apagarAtivo('${a.id}')">X</button>
-                    </td>
-                </tr>`;
+                tAtivos.innerHTML += `<tr><td>${a.nome}</td><td>${a.dono}</td><td>${a.tipo}</td><td style="text-align:center;"><button class="btn-edit" onclick="editarAtivo('${a.id}')">✎</button> <button class="btn-danger" onclick="apagarAtivo('${a.id}')">X</button></td></tr>`;
             });
 
-            const tSnaps = document.getElementById('body-inv-snapshots');
-            tSnaps.innerHTML = '';
-            
-            // Filtra os snapshots exibidos na tabela pelo período
+            const tSnaps = document.getElementById('body-inv-snapshots'); tSnaps.innerHTML = '';
             let snapsFiltrados = dadosAtuais.investimentos.snapshots.filter(s => s.data >= minYYYYMM && s.data <= maxYYYYMM);
-            
             snapsFiltrados.sort((a,b) => a.data > b.data ? -1 : 1).forEach(s => {
                 let ativo = dadosAtuais.investimentos.ativos.find(a => a.id === s.ativo_id);
                 if(ativo) {
-                    tSnaps.innerHTML += `<tr>
-                        <td>${s.data.split('-').reverse().join('/')}</td>
-                        <td>${ativo.nome}</td><td>${ativo.dono}</td>
-                        <td class="text-right">${formatarMoeda(s.valor)}</td>
-                        <td style="text-align:center;">
-                            <button class="btn-edit" onclick="prepararEdicaoSnapshot('${s.id}')">✎</button>
-                            <button class="btn-danger" onclick="apagarSnapshot('${s.id}')">X</button>
-                        </td>
-                    </tr>`;
+                    tSnaps.innerHTML += `<tr><td>${s.data.split('-').reverse().join('/')}</td><td>${ativo.nome}</td><td>${ativo.dono}</td><td class="text-right">${formatarMoeda(s.valor)}</td><td style="text-align:center;"><button class="btn-edit" onclick="prepararEdicaoSnapshot('${s.id}')">✎</button> <button class="btn-danger" onclick="apagarSnapshot('${s.id}')">X</button></td></tr>`;
                 }
             });
-
             renderizarVisaoInvestimentos();
         }
 
         function renderizarVisaoInvestimentos() {
-            let meses = obterMesesFiltroInv();
-            if(meses.length === 0) return;
+            let meses = obterMesesFiltroInv(); if(meses.length === 0) return;
             let donoFiltro = document.getElementById('filtro-inv-dono').value;
-
             let ativosValidos = dadosAtuais.investimentos.ativos;
             if(donoFiltro) ativosValidos = ativosValidos.filter(a => a.dono === donoFiltro);
 
-            const thead = document.getElementById('head-inv-matriz');
-            const tbody = document.getElementById('body-inv-matriz');
-            const tfoot = document.getElementById('foot-inv-matriz');
-            thead.innerHTML = `<tr><th style="text-align:left;">Ativo</th>` + meses.map(m => `<th>${m.label}</th>`).join('') + `</tr>`;
-            tbody.innerHTML = '';
+            const thead = document.getElementById('head-inv-matriz'); const tbody = document.getElementById('body-inv-matriz'); const tfoot = document.getElementById('foot-inv-matriz');
+            thead.innerHTML = `<tr><th style="text-align:left;">Ativo</th>` + meses.map(m => `<th>${m.label}</th>`).join('') + `</tr>`; tbody.innerHTML = '';
 
-            let somasMensais = new Array(meses.length).fill(0);
-            let valoresUltimoMesParaPizza = [];
-            let labelsUltimoMesParaPizza = [];
-
+            let somasMensais = new Array(meses.length).fill(0), valoresUltimoMesParaPizza = [], labelsUltimoMesParaPizza = [];
             ativosValidos.forEach(ativo => {
-                let tr = document.createElement('tr');
-                tr.innerHTML = `<td><strong>${ativo.nome}</strong> <span style="font-size:0.7rem;color:#888;">(${ativo.tipo})</span></td>`;
-                
+                let tr = document.createElement('tr'); tr.innerHTML = `<td><strong>${ativo.nome}</strong> <span style="font-size:0.7rem;color:#888;">(${ativo.tipo})</span></td>`;
                 meses.forEach((m, idx) => {
                     let snapMsg = dadosAtuais.investimentos.snapshots.find(s => s.ativo_id === ativo.id && s.data === m.id);
                     let valorNoMes = snapMsg ? snapMsg.valor : 0; 
-                    
                     tr.innerHTML += `<td class="text-right">${formatarMoeda(valorNoMes)}</td>`;
                     somasMensais[idx] += valorNoMes;
-
-                    if(idx === meses.length - 1 && valorNoMes > 0) {
-                        valoresUltimoMesParaPizza.push(valorNoMes);
-                        labelsUltimoMesParaPizza.push(ativo.nome);
-                    }
+                    if(idx === meses.length - 1 && valorNoMes > 0) { valoresUltimoMesParaPizza.push(valorNoMes); labelsUltimoMesParaPizza.push(ativo.nome); }
                 });
                 tbody.appendChild(tr);
             });
 
             tfoot.innerHTML = `<tr class="row-summary"><td>TOTAL PATRIMÔNIO</td>` + somasMensais.map(s => `<td class="text-right">${formatarMoeda(s)}</td>`).join('') + `</tr>`;
-
-            let patrimonioFinal = somasMensais[somasMensais.length - 1] || 0;
-            let patrimonioInicial = somasMensais[0] || 0;
-            let rendimento = patrimonioFinal - patrimonioInicial;
-
-            document.getElementById('inv-total-patrimonio').innerText = formatarMoeda(patrimonioFinal);
-            document.getElementById('inv-rendimento-periodo').innerText = formatarMoeda(rendimento);
+            let patrimonioFinal = somasMensais[somasMensais.length - 1] || 0, patrimonioInicial = somasMensais[0] || 0, rendimento = patrimonioFinal - patrimonioInicial;
+            document.getElementById('inv-total-patrimonio').innerText = formatarMoeda(patrimonioFinal); document.getElementById('inv-rendimento-periodo').innerText = formatarMoeda(rendimento);
 
             if(chartInvComp) chartInvComp.destroy();
-            chartInvComp = new Chart(document.getElementById('graficoInvComposicao').getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: labelsUltimoMesParaPizza,
-                    datasets: [{ data: valoresUltimoMesParaPizza, backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f43f5e'] }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'right' }, title: {display: true, text: 'Composição no Último Mês'} } }
-            });
+            chartInvComp = new Chart(document.getElementById('graficoInvComposicao').getContext('2d'), { type: 'doughnut', data: { labels: labelsUltimoMesParaPizza, datasets: [{ data: valoresUltimoMesParaPizza, backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f43f5e'] }] }, options: { responsive: true, plugins: { legend: { position: 'right' }, title: {display: true, text: 'Composição no Último Mês'} } } });
 
             if(chartInvEvol) chartInvEvol.destroy();
-            chartInvEvol = new Chart(document.getElementById('graficoInvEvolucao').getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: meses.map(m => m.label),
-                    datasets: [{ label: 'Evolução do Patrimônio', data: somasMensais, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.2)', fill: true, tension: 0.3 }]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { title: {display: true, text: 'Evolução Total (Período)' } } }
-            });
+            chartInvEvol = new Chart(document.getElementById('graficoInvEvolucao').getContext('2d'), { type: 'line', data: { labels: meses.map(m => m.label), datasets: [{ label: 'Evolução do Patrimônio', data: somasMensais, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.2)', fill: true, tension: 0.3 }] }, options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { title: {display: true, text: 'Evolução Total (Período)' } } } });
         }
 
         // --- CATEGORIAS E LANÇAMENTOS GERAIS ---
         function adicionarCategoria() {
-            const nome = document.getElementById('cat-nome').value.trim();
-            const tipo = document.getElementById('cat-tipo').value;
+            const nome = document.getElementById('cat-nome').value.trim(); const tipo = document.getElementById('cat-tipo').value;
             if(!nome) return alert("Digite o nome.");
             dadosAtuais.categorias.push({ nome, tipo });
             document.getElementById('cat-nome').value = '';
             atualizarInterface();
+            registrarAlteracao(); // Aciona auto-save
         }
         function editarCategoria(index) {
             let cat = dadosAtuais.categorias[index];
             let novoNome = prompt("Alterar nome da categoria:", cat.nome);
             if(novoNome && novoNome.trim() !== "" && novoNome !== cat.nome) {
-                let nomeAntigo = cat.nome;
-                cat.nome = novoNome.trim();
+                let nomeAntigo = cat.nome; cat.nome = novoNome.trim();
                 dadosAtuais.lancamentos.forEach(l => { if(l.categoria === nomeAntigo) l.categoria = cat.nome; });
                 atualizarInterface();
+                registrarAlteracao(); // Aciona auto-save
             }
         }
         function apagarCategoria(index) {
             if(confirm("Apagar categoria? (Lançamentos associados manterão o nome antigo)")) { 
                 dadosAtuais.categorias.splice(index, 1); 
                 atualizarInterface(); 
+                registrarAlteracao(); // Aciona auto-save
             }
         }
         function renderizarCategorias() {
-            const tbody = document.getElementById('tabela-categorias');
-            const select = document.getElementById('input-cat');
+            const tbody = document.getElementById('tabela-categorias'); const select = document.getElementById('input-cat');
             tbody.innerHTML = ''; select.innerHTML = '<option value="">Categoria...</option>';
-            
-            // Ordenação Alfanumérica (Natural Sorting)
             let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
-
             categoriasOrdenadas.forEach((cat) => {
                 let indexOriginal = dadosAtuais.categorias.indexOf(cat);
-                
-                tbody.innerHTML += `<tr><td>${cat.nome}</td><td>${cat.tipo}</td><td>
-                    <button class="btn-edit" onclick="editarCategoria(${indexOriginal})">Editar</button> 
-                    <button class="btn-danger" onclick="apagarCategoria(${indexOriginal})">Apagar</button>
-                </td></tr>`;
+                tbody.innerHTML += `<tr><td>${cat.nome}</td><td>${cat.tipo}</td><td><button class="btn-edit" onclick="editarCategoria(${indexOriginal})">Editar</button> <button class="btn-danger" onclick="apagarCategoria(${indexOriginal})">Apagar</button></td></tr>`;
                 select.innerHTML += `<option value="${cat.nome}">${cat.nome} (${cat.tipo})</option>`;
             });
         }
 
         function adicionarLancamentoGeral() {
-            const tipoLanc = document.getElementById('input-tipo-lanc').value;
-            const data = document.getElementById('input-data').value;
-            const desc = document.getElementById('input-desc').value;
-            const catNome = document.getElementById('input-cat').value;
+            const tipoLanc = document.getElementById('input-tipo-lanc').value; const data = document.getElementById('input-data').value;
+            const desc = document.getElementById('input-desc').value; const catNome = document.getElementById('input-cat').value;
             let valorInput = parseFloat(document.getElementById('input-valor').value);
-
             if(!data || !desc || !catNome || isNaN(valorInput)) return alert("Preencha tudo.");
             
             const categoriaObj = dadosAtuais.categorias.find(c => c.nome === catNome);
@@ -861,46 +762,34 @@
 
             if (idEditandoGlobal) {
                 let index = dadosAtuais.lancamentos.findIndex(l => l.id === idEditandoGlobal);
-                if(index > -1) {
-                    dadosAtuais.lancamentos[index].tipo = tipoLanc;
-                    dadosAtuais.lancamentos[index].data = data;
-                    dadosAtuais.lancamentos[index].descricao = desc;
-                    dadosAtuais.lancamentos[index].categoria = catNome;
-                    dadosAtuais.lancamentos[index].valor = valorInput;
-                }
-                idEditandoGlobal = null;
-                document.getElementById('btn-salvar-geral').innerText = "Adicionar";
+                if(index > -1) { dadosAtuais.lancamentos[index].tipo = tipoLanc; dadosAtuais.lancamentos[index].data = data; dadosAtuais.lancamentos[index].descricao = desc; dadosAtuais.lancamentos[index].categoria = catNome; dadosAtuais.lancamentos[index].valor = valorInput; }
+                idEditandoGlobal = null; document.getElementById('btn-salvar-geral').innerText = "Adicionar";
             } else {
                 dadosAtuais.lancamentos.push({ id: Date.now().toString(), data, descricao: desc, categoria: catNome, valor: valorInput, tipo: tipoLanc });
             }
             
             document.getElementById('input-desc').value = ''; document.getElementById('input-valor').value = '';
             atualizarInterface();
+            registrarAlteracao(); // Aciona auto-save
         }
         
         function prepararEdicaoGlobal(id) {
-            let item = dadosAtuais.lancamentos.find(l => l.id === id);
-            if(!item) return;
-            document.getElementById('input-tipo-lanc').value = item.tipo;
-            document.getElementById('input-data').value = item.data;
-            document.getElementById('input-desc').value = item.descricao;
-            document.getElementById('input-cat').value = item.categoria;
-            document.getElementById('input-valor').value = Math.abs(item.valor);
-            idEditandoGlobal = id;
-            document.getElementById('btn-salvar-geral').innerText = "Atualizar Lançamento";
-            window.scrollTo(0, document.getElementById('lancamentos').offsetTop);
+            let item = dadosAtuais.lancamentos.find(l => l.id === id); if(!item) return;
+            document.getElementById('input-tipo-lanc').value = item.tipo; document.getElementById('input-data').value = item.data; document.getElementById('input-desc').value = item.descricao; document.getElementById('input-cat').value = item.categoria; document.getElementById('input-valor').value = Math.abs(item.valor);
+            idEditandoGlobal = id; document.getElementById('btn-salvar-geral').innerText = "Atualizar"; window.scrollTo(0, document.getElementById('lancamentos').offsetTop);
         }
 
         function apagarLancamentoGlobal(id) {
-            if(confirm("Apagar movimentação?")) { dadosAtuais.lancamentos = dadosAtuais.lancamentos.filter(l => l.id !== id); atualizarInterface(); }
+            if(confirm("Apagar movimentação?")) { 
+                dadosAtuais.lancamentos = dadosAtuais.lancamentos.filter(l => l.id !== id); 
+                atualizarInterface(); 
+                registrarAlteracao(); // Aciona auto-save
+            }
         }
 
         function renderizarLancamentosGeral() {
-            let meses = obterMesesFiltro();
-            const tbody = document.getElementById('tabela-lancamentos');
-            tbody.innerHTML = '';
-            if(meses.length === 0) return;
-            let minYYYYMM = meses[0].id; let maxYYYYMM = meses[meses.length - 1].id;
+            let meses = obterMesesFiltro(); const tbody = document.getElementById('tabela-lancamentos'); tbody.innerHTML = '';
+            if(meses.length === 0) return; let minYYYYMM = meses[0].id; let maxYYYYMM = meses[meses.length - 1].id;
 
             dadosAtuais.lancamentos
                 .filter(l => l.tipo !== 'fechamento' && l.data.substring(0, 7) >= minYYYYMM && l.data.substring(0, 7) <= maxYYYYMM)
@@ -908,287 +797,165 @@
                 .forEach(lanc => {
                     let cor = lanc.valor < 0 ? 'var(--danger)' : 'var(--success)';
                     let badgeTipo = lanc.tipo === 'orcado' ? '<span style="background:#fef08a; padding:2px 5px; border-radius:4px; font-size:0.8rem; color:black;">Orçamento</span>' : '<span style="background:#bbf7d0; padding:2px 5px; border-radius:4px; font-size:0.8rem; color:black;">Realizado</span>';
-                    tbody.innerHTML += `<tr>
-                        <td>${lanc.data.split('-').reverse().join('/')}</td>
-                        <td>${badgeTipo}</td>
-                        <td>${lanc.descricao}</td>
-                        <td>${lanc.categoria}</td>
-                        <td style="color: ${cor}; font-weight: bold;">${formatarMoeda(Math.abs(lanc.valor))}</td>
-                        <td style="text-align: center;">
-                            <button class="btn-edit" onclick="prepararEdicaoGlobal('${lanc.id}')">✎</button>
-                            <button class="btn-danger" onclick="apagarLancamentoGlobal('${lanc.id}')">X</button>
-                        </td>
-                    </tr>`;
+                    tbody.innerHTML += `<tr><td>${lanc.data.split('-').reverse().join('/')}</td><td>${badgeTipo}</td><td>${lanc.descricao}</td><td>${lanc.categoria}</td><td style="color: ${cor}; font-weight: bold;">${formatarMoeda(Math.abs(lanc.valor))}</td><td style="text-align: center;"><button class="btn-edit" onclick="prepararEdicaoGlobal('${lanc.id}')">✎</button> <button class="btn-danger" onclick="apagarLancamentoGlobal('${lanc.id}')">X</button></td></tr>`;
             });
         }
 
         // --- MATRIZES & FECHAMENTO ---
         function renderizarMatriz(tipoMatriz, tableId, headId, bodyId, footId) {
-            let meses = obterMesesFiltro();
-            const thead = document.getElementById(headId);
-            const tbody = document.getElementById(bodyId);
-            const tfoot = document.getElementById(footId);
-            thead.innerHTML = ''; tbody.innerHTML = ''; tfoot.innerHTML = '';
-            if(meses.length === 0) return;
+            let meses = obterMesesFiltro(); const thead = document.getElementById(headId); const tbody = document.getElementById(bodyId); const tfoot = document.getElementById(footId);
+            thead.innerHTML = ''; tbody.innerHTML = ''; tfoot.innerHTML = ''; if(meses.length === 0) return;
 
-            let trHead = document.createElement('tr');
-            trHead.innerHTML = `<th style="text-align: left; min-width: 200px;">Categoria</th>`;
-            meses.forEach(m => trHead.innerHTML += `<th>${m.label}</th>`);
-            thead.appendChild(trHead);
-
-            let totaisReceitas = new Array(meses.length).fill(0);
-            let totaisDespesas = new Array(meses.length).fill(0);
-
-            // Ordenação Alfanumérica (Natural Sorting)
+            let trHead = document.createElement('tr'); trHead.innerHTML = `<th style="text-align: left; min-width: 200px;">Categoria</th>`; meses.forEach(m => trHead.innerHTML += `<th>${m.label}</th>`); thead.appendChild(trHead);
+            let totaisReceitas = new Array(meses.length).fill(0), totaisDespesas = new Array(meses.length).fill(0);
             let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             categoriasOrdenadas.forEach(cat => {
-                let tr = document.createElement('tr');
-                tr.innerHTML = `<td style="font-weight: bold;">${cat.nome} <span style="font-size:0.7rem; color:#888;">(${cat.tipo})</span></td>`;
-
+                let tr = document.createElement('tr'); tr.innerHTML = `<td style="font-weight: bold;">${cat.nome} <span style="font-size:0.7rem; color:#888;">(${cat.tipo})</span></td>`;
                 meses.forEach((m, index) => {
-                    let lancamentosCelula = dadosAtuais.lancamentos.filter(l => l.tipo === tipoMatriz && l.categoria === cat.nome && l.data.substring(0,7) === m.id);
-                    let soma = lancamentosCelula.reduce((acc, curr) => acc + curr.valor, 0);
-                    
-                    if(cat.tipo === 'Receita') totaisReceitas[index] += soma;
-                    else totaisDespesas[index] += Math.abs(soma);
-
+                    let soma = dadosAtuais.lancamentos.filter(l => l.tipo === tipoMatriz && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                    if(cat.tipo === 'Receita') totaisReceitas[index] += soma; else totaisDespesas[index] += Math.abs(soma);
                     let displayStr = (soma === 0 && tipoMatriz === 'realizado') ? '-' : formatarMoeda(Math.abs(soma));
                     tr.innerHTML += `<td><span class="clickable-cell" onclick="abrirModalMatriz('${tipoMatriz}', '${cat.nome}', '${m.id}', '${m.label}')">${displayStr}</span></td>`;
                 });
                 tbody.appendChild(tr);
             });
 
-            let saldosIniciais = new Array(meses.length).fill(0);
-            let saldosFinais = new Array(meses.length).fill(0);
+            let saldosIniciais = new Array(meses.length).fill(0), saldosFinais = new Array(meses.length).fill(0);
             saldosIniciais[0] = calcularSaldoAnterior(meses[0].id, tipoMatriz);
+            for(let i = 0; i < meses.length; i++) { if(i > 0) saldosIniciais[i] = saldosFinais[i-1]; saldosFinais[i] = saldosIniciais[i] + totaisReceitas[i] - totaisDespesas[i]; }
 
-            for(let i = 0; i < meses.length; i++) {
-                if(i > 0) saldosIniciais[i] = saldosFinais[i-1];
-                saldosFinais[i] = saldosIniciais[i] + totaisReceitas[i] - totaisDespesas[i];
-            }
-
-            tfoot.innerHTML = `
-                <tr class="row-summary"><td>Saldo Inicial do Mês</td>${saldosIniciais.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
+            tfoot.innerHTML = `<tr class="row-summary"><td>Saldo Inicial do Mês</td>${saldosIniciais.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
                 <tr class="row-summary" style="color: var(--success);"><td>(+) Total Receitas</td>${totaisReceitas.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
                 <tr class="row-summary" style="color: var(--danger);"><td>(-) Total Despesas</td>${totaisDespesas.map(v => `<td class="text-right">${formatarMoeda(v)}</td>`).join('')}</tr>
-                <tr class="row-summary" style="background-color: #e2e8f0;"><td>= Saldo Final do Mês</td>${saldosFinais.map(v => `<td class="text-right" style="color: ${v >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(v)}</td>`).join('')}</tr>
-            `;
+                <tr class="row-summary" style="background-color: #e2e8f0;"><td>= Saldo Final do Mês</td>${saldosFinais.map(v => `<td class="text-right" style="color: ${v >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(v)}</td>`).join('')}</tr>`;
 
             if (tipoMatriz === 'realizado') {
-                let rowFechamento = '<tr class="row-summary"><td style="color: #6b7280; font-style: italic;">📥 Lançamentos p/ Fechar (Físico)</td>';
-                let rowDiferenca = '<tr class="row-summary"><td style="color: #3730a3;">⚖️ Saldo de Fechamento (Diferença)</td>';
-                
+                let rowFechamento = '<tr class="row-summary"><td style="color: #6b7280; font-style: italic;">📥 Lançamentos p/ Fechar (Físico)</td>', rowDiferenca = '<tr class="row-summary"><td style="color: #3730a3;">⚖️ Saldo de Fechamento (Diferença)</td>';
                 for(let i = 0; i < meses.length; i++) {
-                    let m = meses[i];
-                    let somaFechamento = dadosAtuais.lancamentos.filter(l => l.tipo === 'fechamento' && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
+                    let m = meses[i], somaFechamento = dadosAtuais.lancamentos.filter(l => l.tipo === 'fechamento' && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
                     let displayFech = somaFechamento === 0 ? '-' : formatarMoeda(somaFechamento);
-                    
                     rowFechamento += `<td class="text-right"><span class="clickable-cell" style="color:#6b7280;" onclick="abrirModalMatriz('fechamento', 'Fechamento de Caixa', '${m.id}', '${m.label}')">${displayFech}</span></td>`;
                     
-                    let diff = saldosFinais[i] + somaFechamento;
-                    if(Math.abs(diff) < 0.01) diff = 0;
-                    
+                    let diff = saldosFinais[i] + somaFechamento; if(Math.abs(diff) < 0.01) diff = 0;
                     let isFechamentoZerado = (saldosFinais[i] === 0 && somaFechamento === 0);
-                    let diffColor = diff === 0 ? 'var(--primary)' : 'var(--danger)'; 
-                    let diffText = diff === 0 ? '0,00' : formatarMoeda(diff);
-                    
+                    let diffColor = diff === 0 ? 'var(--primary)' : 'var(--danger)', diffText = diff === 0 ? '0,00' : formatarMoeda(diff);
                     if(isFechamentoZerado) { diffColor = 'var(--text-light)'; diffText = '-'; }
-                    
                     rowDiferenca += `<td class="text-right" style="color: ${diffColor}; font-weight: 900; background-color: ${diff===0 && !isFechamentoZerado ? '#eff6ff' : ''}">${diffText}</td>`;
                 }
-                
-                rowFechamento += '</tr>';
-                rowDiferenca += '</tr>';
-                tfoot.innerHTML += rowFechamento + rowDiferenca;
+                rowFechamento += '</tr>'; rowDiferenca += '</tr>'; tfoot.innerHTML += rowFechamento + rowDiferenca;
             }
         }
 
-        // --- LÓGICA DO MODAL DAS MATRIZES E FECHAMENTO ---
+        // --- MODAL MATRIZ ---
         function abrirModalMatriz(tipo, categoria, mesId, labelMes) {
             contextoModal = { tipo, categoria, mesId, label: labelMes };
             document.getElementById('modalMatrizTitle').innerText = `${tipo === 'orcado' ? 'Orçamento' : (tipo === 'fechamento' ? 'Fechamento' : 'Realizado')} - ${categoria}`;
             document.getElementById('modalMatrizSub').innerText = `Mês: ${labelMes}`;
-            
-            document.getElementById('mod-data').value = `${mesId}-01`;
-            document.getElementById('mod-desc').value = '';
-            document.getElementById('mod-valor').value = '';
-            idEditandoModal = null;
-            document.getElementById('btn-salvar-modal').innerText = "Adicionar";
-            
+            document.getElementById('mod-data').value = `${mesId}-01`; document.getElementById('mod-desc').value = ''; document.getElementById('mod-valor').value = '';
+            idEditandoModal = null; document.getElementById('btn-salvar-modal').innerText = "Adicionar";
             document.getElementById('btn-replicar-modal').style.display = (tipo === 'orcado') ? 'block' : 'none';
-
-            renderizarItensModal();
-            document.getElementById('modalMatriz').style.display = 'flex';
+            renderizarItensModal(); document.getElementById('modalMatriz').style.display = 'flex';
         }
 
         function fecharModalMatriz() { document.getElementById('modalMatriz').style.display = 'none'; }
 
         function renderizarItensModal() {
-            const tbody = document.getElementById('modalMatrizBody');
-            tbody.innerHTML = '';
+            const tbody = document.getElementById('modalMatrizBody'); tbody.innerHTML = '';
             let itens = dadosAtuais.lancamentos.filter(l => l.tipo === contextoModal.tipo && l.categoria === contextoModal.categoria && l.data.substring(0,7) === contextoModal.mesId);
             let total = 0;
             itens.sort((a,b) => new Date(a.data) - new Date(b.data)).forEach(lanc => {
-                total += lanc.valor;
-                
-                let corValor = lanc.valor < 0 ? 'var(--danger)' : 'var(--success)';
-                let displayValor = formatarMoeda(contextoModal.tipo === 'fechamento' ? lanc.valor : Math.abs(lanc.valor));
-
-                tbody.innerHTML += `<tr>
-                    <td>${lanc.data.split('-').reverse().join('/')}</td>
-                    <td>${lanc.descricao}</td>
-                    <td class="text-right" style="color:${corValor}">${displayValor}</td>
-                    <td class="text-right">
-                        <button class="btn-edit" onclick="prepararEdicaoModal('${lanc.id}')">✎</button>
-                        <button class="btn-danger" onclick="excluirItemModal('${lanc.id}')">X</button>
-                    </td>
-                </tr>`;
+                total += lanc.valor; let corValor = lanc.valor < 0 ? 'var(--danger)' : 'var(--success)', displayValor = formatarMoeda(contextoModal.tipo === 'fechamento' ? lanc.valor : Math.abs(lanc.valor));
+                tbody.innerHTML += `<tr><td>${lanc.data.split('-').reverse().join('/')}</td><td>${lanc.descricao}</td><td class="text-right" style="color:${corValor}">${displayValor}</td><td class="text-right"><button class="btn-edit" onclick="prepararEdicaoModal('${lanc.id}')">✎</button> <button class="btn-danger" onclick="excluirItemModal('${lanc.id}')">X</button></td></tr>`;
             });
-            
             let colorTotal = (contextoModal.tipo === 'fechamento' && total < 0) ? 'var(--danger)' : 'var(--primary)';
             document.getElementById('modalMatrizTotal').innerText = formatarMoeda(contextoModal.tipo === 'fechamento' ? total : Math.abs(total));
             document.getElementById('modalMatrizTotal').style.color = colorTotal;
         }
 
         function salvarLancamentoModal() {
-            const data = document.getElementById('mod-data').value;
-            const desc = document.getElementById('mod-desc').value;
-            let valor = parseFloat(document.getElementById('mod-valor').value);
+            const data = document.getElementById('mod-data').value, desc = document.getElementById('mod-desc').value; let valor = parseFloat(document.getElementById('mod-valor').value);
             if(!data || !desc || isNaN(valor)) return alert("Preencha todos os campos.");
-
-            if (contextoModal.tipo !== 'fechamento') {
-                const catObj = dadosAtuais.categorias.find(c => c.nome === contextoModal.categoria);
-                valor = (catObj && catObj.tipo === 'Despesa') ? -Math.abs(valor) : Math.abs(valor);
-            }
+            if (contextoModal.tipo !== 'fechamento') { const catObj = dadosAtuais.categorias.find(c => c.nome === contextoModal.categoria); valor = (catObj && catObj.tipo === 'Despesa') ? -Math.abs(valor) : Math.abs(valor); }
 
             if(idEditandoModal) {
                 let index = dadosAtuais.lancamentos.findIndex(l => l.id === idEditandoModal);
-                if(index > -1) {
-                    dadosAtuais.lancamentos[index].data = data;
-                    dadosAtuais.lancamentos[index].descricao = desc;
-                    dadosAtuais.lancamentos[index].valor = valor;
-                }
-                idEditandoModal = null;
-                document.getElementById('btn-salvar-modal').innerText = "Adicionar";
+                if(index > -1) { dadosAtuais.lancamentos[index].data = data; dadosAtuais.lancamentos[index].descricao = desc; dadosAtuais.lancamentos[index].valor = valor; }
+                idEditandoModal = null; document.getElementById('btn-salvar-modal').innerText = "Adicionar";
             } else {
                 dadosAtuais.lancamentos.push({ id: Date.now().toString(), data, descricao: desc, categoria: contextoModal.categoria, valor, tipo: contextoModal.tipo });
             }
-            
-            document.getElementById('mod-desc').value = '';
-            document.getElementById('mod-valor').value = '';
-            renderizarItensModal();
-            atualizarInterface();
+            document.getElementById('mod-desc').value = ''; document.getElementById('mod-valor').value = '';
+            renderizarItensModal(); atualizarInterface();
+            registrarAlteracao(); // Aciona auto-save
         }
 
         function prepararEdicaoModal(id) {
-            let item = dadosAtuais.lancamentos.find(l => l.id === id);
-            if(!item) return;
-            document.getElementById('mod-data').value = item.data;
-            document.getElementById('mod-desc').value = item.descricao;
-            document.getElementById('mod-valor').value = (contextoModal.tipo === 'fechamento') ? item.valor : Math.abs(item.valor);
-            idEditandoModal = id;
-            document.getElementById('btn-salvar-modal').innerText = "Atualizar";
+            let item = dadosAtuais.lancamentos.find(l => l.id === id); if(!item) return;
+            document.getElementById('mod-data').value = item.data; document.getElementById('mod-desc').value = item.descricao; document.getElementById('mod-valor').value = (contextoModal.tipo === 'fechamento') ? item.valor : Math.abs(item.valor);
+            idEditandoModal = id; document.getElementById('btn-salvar-modal').innerText = "Atualizar";
         }
 
         function excluirItemModal(id) {
             dadosAtuais.lancamentos = dadosAtuais.lancamentos.filter(l => l.id !== id);
-            renderizarItensModal();
-            atualizarInterface();
+            renderizarItensModal(); atualizarInterface();
+            registrarAlteracao(); // Aciona auto-save
         }
 
         function replicarModalParaFrente() {
-            let meses = obterMesesFiltro();
-            let idxAtual = meses.findIndex(m => m.id === contextoModal.mesId);
-            if(idxAtual === -1) return;
-            
+            let meses = obterMesesFiltro(), idxAtual = meses.findIndex(m => m.id === contextoModal.mesId); if(idxAtual === -1) return;
             let itensAtuais = dadosAtuais.lancamentos.filter(l => l.tipo === contextoModal.tipo && l.categoria === contextoModal.categoria && l.data.substring(0,7) === contextoModal.mesId);
             if(itensAtuais.length === 0) return alert("Nenhum lançamento nesta célula para replicar.");
-
             let replicados = 0;
             for(let i = idxAtual + 1; i < meses.length; i++) {
                 let mesAlvo = meses[i].id;
-                itensAtuais.forEach(item => {
-                    let partes = item.data.split('-');
-                    let novaData = `${mesAlvo}-${partes[2]}`; 
-                    dadosAtuais.lancamentos.push({ ...item, id: Date.now().toString() + Math.random(), data: novaData });
-                    replicados++;
-                });
+                itensAtuais.forEach(item => { let novaData = `${mesAlvo}-${item.data.split('-')[2]}`; dadosAtuais.lancamentos.push({ ...item, id: Date.now().toString() + Math.random(), data: novaData }); replicados++; });
             }
             alert(`${replicados} itens foram criados nos meses futuros do filtro!`);
             atualizarInterface();
+            registrarAlteracao(); // Aciona auto-save
         }
 
         function replicarOrcadoParaRealizadoGlobal() {
-            if(!confirm("Atenção: Isso vai copiar TODOS os lançamentos orçados para a visão Realizado. Continuar?")) return;
+            if(!confirm("Atenção: Isto vai copiar TODOS os lançamentos orçados para a visão Realizado. Continuar?")) return;
             let orcados = dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado');
             orcados.forEach(o => { dadosAtuais.lancamentos.push({ ...o, id: Date.now().toString() + Math.random(), tipo: 'realizado' }); });
             atualizarInterface();
             alert("Orçamento replicado com sucesso!");
+            registrarAlteracao(); // Aciona auto-save
         }
 
         // --- FLUXO E DASHBOARD ---
         function renderizarFluxoCaixa() {
-            let meses = obterMesesFiltro();
-            const tbody = document.getElementById('body-fluxo-caixa');
-            tbody.innerHTML = '';
-            if(meses.length === 0) return;
-            let saldoInicialAtual = calcularSaldoAnterior(meses[0].id, 'realizado');
-
-            // Ordenação Alfanumérica (Natural Sorting)
+            let meses = obterMesesFiltro(); const tbody = document.getElementById('body-fluxo-caixa'); tbody.innerHTML = '';
+            if(meses.length === 0) return; let saldoInicialAtual = calcularSaldoAnterior(meses[0].id, 'realizado');
             let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             meses.forEach(m => {
                 let entradasMes = 0; let saidasMes = 0;
-                dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id).forEach(l => {
-                    if(l.valor > 0) entradasMes += l.valor; else saidasMes += Math.abs(l.valor);
-                });
+                dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id).forEach(l => { if(l.valor > 0) entradasMes += l.valor; else saidasMes += Math.abs(l.valor); });
                 let saldoFinalMes = saldoInicialAtual + entradasMes - saidasMes;
 
-                tbody.innerHTML += `
-                    <tr style="font-weight:bold; background:var(--summary-bg);">
-                        <td><span style="cursor:pointer" onclick="toggleLinhas('${m.id}')">➕</span> ${m.label}</td>
-                        <td class="text-right">${formatarMoeda(saldoInicialAtual)}</td>
-                        <td class="text-right" style="color: var(--success);">${formatarMoeda(entradasMes)}</td>
-                        <td class="text-right" style="color: var(--danger);">${formatarMoeda(saidasMes)}</td>
-                        <td class="text-right" style="font-weight: bold; color: ${saldoFinalMes >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(saldoFinalMes)}</td>
-                    </tr>
-                `;
+                tbody.innerHTML += `<tr style="font-weight:bold; background:var(--summary-bg);"><td><span style="cursor:pointer" onclick="toggleLinhas('${m.id}')">➕</span> ${m.label}</td><td class="text-right">${formatarMoeda(saldoInicialAtual)}</td><td class="text-right" style="color: var(--success);">${formatarMoeda(entradasMes)}</td><td class="text-right" style="color: var(--danger);">${formatarMoeda(saidasMes)}</td><td class="text-right" style="font-weight: bold; color: ${saldoFinalMes >= 0 ? 'var(--primary)' : 'var(--danger)'};">${formatarMoeda(saldoFinalMes)}</td></tr>`;
                 
                 categoriasOrdenadas.forEach(cat => {
-                    let catTotal = dadosAtuais.lancamentos
-                        .filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id)
-                        .reduce((acc, curr) => acc + curr.valor, 0);
-                    
+                    let catTotal = dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
                     if (catTotal !== 0) {
-                        let tdEntrada = '<td></td>';
-                        let tdSaida = '<td></td>';
-                        if (cat.tipo === 'Receita') {
-                            tdEntrada = `<td class="text-right"><span class="clickable-cell" style="color: var(--success);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(catTotal)}</span></td>`;
-                        } else {
-                            tdSaida = `<td class="text-right"><span class="clickable-cell" style="color: var(--danger);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(Math.abs(catTotal))}</span></td>`;
-                        }
-                        tbody.innerHTML += `
-                            <tr class="cat-row-${m.id}" style="display:none; font-size: 0.8rem; background: #fff;">
-                                <td>&nbsp;&nbsp;${cat.nome}</td><td></td>${tdEntrada}${tdSaida}<td></td>
-                            </tr>`;
+                        let tdEntrada = '<td></td>', tdSaida = '<td></td>';
+                        if (cat.tipo === 'Receita') tdEntrada = `<td class="text-right"><span class="clickable-cell" style="color: var(--success);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(catTotal)}</span></td>`;
+                        else tdSaida = `<td class="text-right"><span class="clickable-cell" style="color: var(--danger);" onclick="abrirModalMatriz('realizado', '${cat.nome}', '${m.id}', '${m.label}')">${formatarMoeda(Math.abs(catTotal))}</span></td>`;
+                        tbody.innerHTML += `<tr class="cat-row-${m.id}" style="display:none; font-size: 0.8rem; background: #fff;"><td>&nbsp;&nbsp;${cat.nome}</td><td></td>${tdEntrada}${tdSaida}<td></td></tr>`;
                     }
                 });
                 saldoInicialAtual = saldoFinalMes; 
             });
         }
         
-        function toggleLinhas(mesId) {
-            document.querySelectorAll(`.cat-row-${mesId}`).forEach(tr => { tr.style.display = (tr.style.display === 'none' ? 'table-row' : 'none'); });
-        }
+        function toggleLinhas(mesId) { document.querySelectorAll(`.cat-row-${mesId}`).forEach(tr => { tr.style.display = (tr.style.display === 'none' ? 'table-row' : 'none'); }); }
 
         function renderizarComparativo() {
-            const tbody = document.getElementById('body-comparativo');
-            tbody.innerHTML = '';
-            let meses = obterMesesFiltro();
-            if(meses.length === 0) return;
-
-            // Ordenação Alfanumérica (Natural Sorting)
+            const tbody = document.getElementById('body-comparativo'); tbody.innerHTML = '';
+            let meses = obterMesesFiltro(); if(meses.length === 0) return;
             let categoriasOrdenadas = [...dadosAtuais.categorias].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }));
 
             categoriasOrdenadas.forEach(cat => {
@@ -1197,72 +964,33 @@
                     previsto += dadosAtuais.lancamentos.filter(l => l.tipo === 'orcado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
                     realizado += dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.categoria === cat.nome && l.data.substring(0,7) === m.id).reduce((acc, curr) => acc + curr.valor, 0);
                 });
-
-                let dispPrev = Math.abs(previsto);
-                let dispReal = Math.abs(realizado);
-                let diferenca = cat.tipo === 'Receita' ? (dispReal - dispPrev) : (dispPrev - dispReal);
+                let dispPrev = Math.abs(previsto), dispReal = Math.abs(realizado), diferenca = cat.tipo === 'Receita' ? (dispReal - dispPrev) : (dispPrev - dispReal);
                 let corDiff = diferenca >= 0 ? 'var(--success)' : 'var(--danger)';
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td style="font-weight: bold;">${cat.nome}</td>
-                        <td class="text-right">${formatarMoeda(dispPrev)}</td>
-                        <td class="text-right">${formatarMoeda(dispReal)}</td>
-                        <td class="text-right" style="color: ${corDiff}; font-weight: bold;">${formatarMoeda(diferenca)}</td>
-                    </tr>`;
+                tbody.innerHTML += `<tr><td style="font-weight: bold;">${cat.nome}</td><td class="text-right">${formatarMoeda(dispPrev)}</td><td class="text-right">${formatarMoeda(dispReal)}</td><td class="text-right" style="color: ${corDiff}; font-weight: bold;">${formatarMoeda(diferenca)}</td></tr>`;
             });
         }
 
         function atualizarDashboard() {
-            let meses = obterMesesFiltro();
-            if(meses.length === 0) return;
-
+            let meses = obterMesesFiltro(); if(meses.length === 0) return;
             document.getElementById('dash-label-periodo').innerText = `${meses[0].label} até ${meses[meses.length-1].label}`;
 
             let totalEntradas = 0, totalSaidas = 0;
-            dadosAtuais.lancamentos
-                .filter(l => l.tipo === 'realizado' && l.data.substring(0, 7) >= meses[0].id && l.data.substring(0, 7) <= meses[meses.length - 1].id)
-                .forEach(l => { if(l.valor > 0) totalEntradas += l.valor; else totalSaidas += Math.abs(l.valor); });
-            
+            dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0, 7) >= meses[0].id && l.data.substring(0, 7) <= meses[meses.length - 1].id).forEach(l => { if(l.valor > 0) totalEntradas += l.valor; else totalSaidas += Math.abs(l.valor); });
             let saldoFinalPer = calcularSaldoAnterior(meses[0].id, 'realizado') + (totalEntradas - totalSaidas);
 
-            document.getElementById('dash-receitas').innerText = formatarMoeda(totalEntradas);
-            document.getElementById('dash-despesas').innerText = formatarMoeda(totalSaidas);
-            let saldoElem = document.getElementById('dash-saldo');
-            saldoElem.innerText = formatarMoeda(saldoFinalPer);
-            saldoElem.style.color = saldoFinalPer >= 0 ? 'var(--primary)' : 'var(--danger)';
+            document.getElementById('dash-receitas').innerText = formatarMoeda(totalEntradas); document.getElementById('dash-despesas').innerText = formatarMoeda(totalSaidas);
+            let saldoElem = document.getElementById('dash-saldo'); saldoElem.innerText = formatarMoeda(saldoFinalPer); saldoElem.style.color = saldoFinalPer >= 0 ? 'var(--primary)' : 'var(--danger)';
 
-            let labels = meses.map(m => m.label);
-            let saldosFinais = [];
-            let entradasMensais = [];
-            let saidasMensais = [];
-            
+            let labels = meses.map(m => m.label), saldosFinais = [], entradasMensais = [], saidasMensais = [];
             let saldoAcumulado = calcularSaldoAnterior(meses[0].id, 'realizado');
-
             meses.forEach(m => {
                 let movs = dadosAtuais.lancamentos.filter(l => l.tipo === 'realizado' && l.data.substring(0,7) === m.id);
-                let e = movs.filter(l => l.valor > 0).reduce((acc, l) => acc + l.valor, 0);
-                let s = movs.filter(l => l.valor < 0).reduce((acc, l) => acc + Math.abs(l.valor), 0);
-                
-                entradasMensais.push(e);
-                saidasMensais.push(s);
-                saldoAcumulado += (e - s);
-                saldosFinais.push(saldoAcumulado);
+                let e = movs.filter(l => l.valor > 0).reduce((acc, l) => acc + l.valor, 0), s = movs.filter(l => l.valor < 0).reduce((acc, l) => acc + Math.abs(l.valor), 0);
+                entradasMensais.push(e); saidasMensais.push(s); saldoAcumulado += (e - s); saldosFinais.push(saldoAcumulado);
             });
 
             if(chartInstance) chartInstance.destroy();
-            chartInstance = new Chart(document.getElementById('graficoEvolucao').getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { type: 'bar', label: 'Entradas Realizadas', data: entradasMensais, backgroundColor: '#10b981' },
-                        { type: 'bar', label: 'Saídas Realizadas', data: saidasMensais, backgroundColor: '#ef4444' },
-                        { type: 'line', label: 'Saldo Final Realizado', data: saldosFinais, borderColor: '#2563eb', fill: false, tension: 0.3 }
-                    ]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true } } }
-            });
+            chartInstance = new Chart(document.getElementById('graficoEvolucao').getContext('2d'), { type: 'bar', data: { labels: labels, datasets: [{ type: 'bar', label: 'Entradas Realizadas', data: entradasMensais, backgroundColor: '#10b981' }, { type: 'bar', label: 'Saídas Realizadas', data: saidasMensais, backgroundColor: '#ef4444' }, { type: 'line', label: 'Saldo Final Realizado', data: saldosFinais, borderColor: '#2563eb', fill: false, tension: 0.3 }] }, options: { responsive: true, scales: { y: { beginAtZero: true } } } });
         }
     </script>
     <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
