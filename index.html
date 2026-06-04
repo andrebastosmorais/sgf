@@ -9,22 +9,24 @@
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: var(--bg-color); color: var(--text-dark); }
         
+        /* 1. BLOQUEIO DE SEGURANÇA OFFLINE */
+        .offline-disabled { opacity: 0.6; pointer-events: none; filter: grayscale(80%); transition: 0.3s; }
+        #status-bar { padding: 8px; text-align: center; font-weight: bold; color: white; background: var(--danger); transition: 0.3s; font-size: 0.9rem;}
+        
         header { background-color: var(--primary); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .btn-google { background-color: white; color: #1f2937; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         
-        /* Barra de Arquivos (Top) */
         .controls-bar { background-color: #1e40af; padding: 0.5rem 1rem; display: flex; gap: 1rem; overflow-x: auto; align-items: center; border-radius: 8px; margin-bottom: 1rem; }
         .control-tab { background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 15px; border-radius: 15px; cursor: pointer; }
         .control-tab.active { background: white; color: var(--primary); font-weight: bold; }
 
         .container { max-width: 1200px; margin: 1rem auto 2rem; padding: 0 1rem; }
         
-        /* Filtros e Configs */
         .config-box { background: #e0e7ff; padding: 1rem; border-radius: 8px; border: 1px solid #c7d2fe; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
         .global-filter { background: var(--summary-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
         .global-filter input[type="month"], .config-box input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .config-box input:disabled { background-color: #f3f4f6; cursor: not-allowed; color: #6b7280; }
 
-        /* Abas Principais */
         .main-tabs { display: flex; gap: 1rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border); padding-bottom: 5px; }
         .main-tab-btn { background: none; border: none; font-size: 1.2rem; padding: 10px 20px; cursor: pointer; color: var(--text-light); }
         .main-tab-btn.active { color: var(--primary); font-weight: bold; border-bottom: 3px solid var(--primary); }
@@ -35,7 +37,6 @@
         .section { display: none; background: var(--card-bg); padding: 2rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .section.active { display: block; }
 
-        /* Tabelas */
         .tabelao-container { overflow-x: auto; margin-top: 1rem; border: 1px solid var(--border); border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 800px; }
         th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
@@ -48,8 +49,8 @@
         .card h3 { color: var(--text-light); font-size: 0.9rem; margin-bottom: 0.5rem; }
         .card .value { font-size: 1.5rem; font-weight: bold; }
 
-        .btn-action { background-color: var(--success); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.3s; }
-        .btn-warning { background-color: var(--warning); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .btn-action { background-color: var(--success); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.3s; font-weight: bold;}
+        .btn-warning { background-color: var(--warning); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;}
         .btn-danger { background-color: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
         .btn-edit { background-color: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
         
@@ -74,6 +75,8 @@
 </head>
 <body>
 
+    <div id="status-bar">🔴 Aguardando Ligar ao Google Drive...</div>
+
     <div id="loading-overlay">A carregar... Por favor, aguarde.</div>
 
     <header>
@@ -81,7 +84,7 @@
         <button id="auth-btn" class="btn-google" onclick="handleAuthClick()">Ligar ao Google Drive</button>
     </header>
 
-    <div class="container" id="app-container" style="display: none;">
+    <div class="container offline-disabled" id="app-container" style="display: none;">
         
         <div class="main-tabs">
             <button class="main-tab-btn active" id="tab-btn-financas" onclick="switchMainTab('financas')">Gestão Financeira</button>
@@ -97,9 +100,10 @@
             <div class="config-box">
                 <h3 style="margin-right: 1rem; font-size: 1rem; color: #3730a3;">Configuração Inicial:</h3>
                 <label>Mês de Início Base:</label>
-                <input type="month" id="config-data-base" onchange="atualizarConfiguracaoBase()">
+                <input type="month" id="config-data-base" disabled>
                 <label>Saldo Inicial:</label>
-                <input type="number" id="config-saldo-base" onchange="atualizarConfiguracaoBase()" step="0.01">
+                <input type="number" id="config-saldo-base" step="0.01" disabled>
+                <button id="btn-edit-config" class="btn-warning" onclick="toggleConfigEdit()">Editar</button>
                 
                 <button onclick="criarNovoArquivo()" style="margin-left: auto; background: var(--success); color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap;">+ Novo Controle</button>
             </div>
@@ -308,7 +312,7 @@
                     <option value="#e5e7eb">🔘 Confirmado (Cinza)</option>
                     <option value="#fed7aa">🟠 Atenção (Laranja)</option>
                 </select>
-                <span style="font-size: 0.8rem; color: #666; margin-left: 10px;">A cor mudará diretamente na tabela de Realizado.</span>
+                <span style="font-size: 0.8rem; color: #666; margin-left: 10px;">A cor mudará diretamente na tabela.</span>
             </div>
 
             <table style="min-width: 100%;">
@@ -347,7 +351,7 @@
             categorias: [], 
             lancamentos: [], 
             investimentos: { ativos: [], snapshots: [] },
-            coresCelulas: [] // NOVO: Armazena as cores das células
+            coresCelulas: []
         }; 
 
         let contextoModal = { tipo: '', categoria: '', mesId: '', label: '' };
@@ -356,6 +360,48 @@
         const formatarMoeda = (val) => (parseFloat(val) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         function showLoading(show) { document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; }
         
+        // --- 1. BLOQUEIO DE SEGURANÇA (OFFLINE) ---
+        function monitorarConexao() {
+            const container = document.getElementById('app-container');
+            const statusBar = document.getElementById('status-bar');
+            
+            // Verifica se tem Token e se o navegador tem internet
+            if (!accessToken || !navigator.onLine) {
+                container.classList.add('offline-disabled');
+                statusBar.innerText = "🔴 DESCONECTADO - Verifique a internet ou faça login para poder editar.";
+                statusBar.style.background = "var(--danger)";
+            } else {
+                container.classList.remove('offline-disabled');
+                statusBar.innerText = "🟢 Sistema Online e Ligado ao Google Drive";
+                statusBar.style.background = "var(--success)";
+            }
+        }
+        setInterval(monitorarConexao, 2000);
+
+        // --- 2. TRAVA DA CONFIGURAÇÃO INICIAL ---
+        function toggleConfigEdit() {
+            let inputMes = document.getElementById('config-data-base');
+            let inputSaldo = document.getElementById('config-saldo-base');
+            let btn = document.getElementById('btn-edit-config');
+            
+            if (inputMes.disabled) {
+                // Desbloqueia para edição
+                inputMes.disabled = false;
+                inputSaldo.disabled = false;
+                btn.innerText = "Salvar Configuração";
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-action');
+            } else {
+                // Bloqueia e salva
+                inputMes.disabled = true;
+                inputSaldo.disabled = true;
+                btn.innerText = "Editar";
+                btn.classList.remove('btn-action');
+                btn.classList.add('btn-warning');
+                atualizarConfiguracaoBase();
+            }
+        }
+
         window.addEventListener('beforeunload', function (e) {
             if (dadosNaoSalvos) { e.preventDefault(); e.returnValue = 'Tem alterações não guardadas no Google Drive. Se sair agora, irá perdê-las!'; }
         });
@@ -441,7 +487,9 @@
                     if (resp.error !== undefined) { alert("Erro de autenticação Google: " + resp.error); throw (resp); }
                     accessToken = resp.access_token;
                     document.getElementById('auth-btn').innerText = 'Sessão Iniciada'; document.getElementById('auth-btn').style.backgroundColor = 'var(--success)'; document.getElementById('auth-btn').style.color = 'white';
-                    document.getElementById('app-container').style.display = 'block'; listarArquivos();
+                    document.getElementById('app-container').style.display = 'block'; 
+                    monitorarConexao(); // Aciona imediatamente para libertar a tela
+                    listarArquivos();
                 },
             });
             gisInited = true;
@@ -493,7 +541,7 @@
                     let json = await response.json();
                     if(!json.lancamentos) json.lancamentos = [];
                     if(!json.investimentos) json.investimentos = { ativos: [], snapshots: [] };
-                    if(!json.coresCelulas) json.coresCelulas = []; // NOVO
+                    if(!json.coresCelulas) json.coresCelulas = []; 
                     json.lancamentos.forEach(l => { if(!l.tipo) l.tipo = 'realizado'; });
                     dadosAtuais = json;
                     
@@ -708,7 +756,6 @@
                     if(cat.tipo === 'Receita') totaisReceitas[index] += soma; else totaisDespesas[index] += Math.abs(soma);
                     let displayStr = (soma === 0 && tipoMatriz === 'realizado') ? '-' : formatarMoeda(Math.abs(soma));
                     
-                    // NOVO: Lógica que verifica e pinta a célula
                     let idCelula = `${tipoMatriz}-${cat.nome}-${m.id}`;
                     let corBg = '';
                     if (dadosAtuais.coresCelulas) {
@@ -716,7 +763,8 @@
                         if (corSalva && corSalva.cor) corBg = `background-color: ${corSalva.cor};`;
                     }
 
-                    tr.innerHTML += `<td style="${corBg} transition: 0.3s;"><span class="clickable-cell" onclick="abrirModalMatriz('${tipoMatriz}', '${cat.nome}', '${m.id}', '${m.label}')">${displayStr}</span></td>`;
+                    // 3. IDENTIFICADOR DA CÉLULA (DATA-ID) PARA PINTAR RAPIDAMENTE
+                    tr.innerHTML += `<td data-id="${idCelula}" style="${corBg} transition: 0.3s;"><span class="clickable-cell" onclick="abrirModalMatriz('${tipoMatriz}', '${cat.nome}', '${m.id}', '${m.label}')">${displayStr}</span></td>`;
                 });
                 tbody.appendChild(tr);
             });
@@ -747,7 +795,6 @@
             }
         }
 
-        // --- FUNÇÕES DA COR E MODAL ---
         function abrirModalMatriz(tipo, categoria, mesId, labelMes) {
             contextoModal = { tipo, categoria, mesId, label: labelMes };
             document.getElementById('modalMatrizTitle').innerText = `${tipo === 'orcado' ? 'Orçamento' : (tipo === 'fechamento' ? 'Fechamento' : 'Realizado')} - ${categoria}`;
@@ -756,7 +803,6 @@
             idEditandoModal = null; document.getElementById('btn-salvar-modal').innerText = "Adicionar";
             document.getElementById('btn-replicar-modal').style.display = (tipo === 'orcado') ? 'block' : 'none';
             
-            // NOVO: Gerir a exibição do seletor de cores
             if(!dadosAtuais.coresCelulas) dadosAtuais.coresCelulas = [];
             let idCelula = `${tipo}-${categoria}-${mesId}`;
             let corSalva = dadosAtuais.coresCelulas.find(c => c.id === idCelula);
@@ -773,11 +819,18 @@
 
         function fecharModalMatriz() { document.getElementById('modalMatriz').style.display = 'none'; }
 
-        // NOVO: Função para guardar e renderizar a cor em tempo real
+        // --- 4. SALVAMENTO RÁPIDO DA COR (SEM RECARREGAR A TELA) ---
         function salvarCorCelula() {
             let corSelecionada = document.getElementById('mod-cor-celula').value;
             let idCelula = `${contextoModal.tipo}-${contextoModal.categoria}-${contextoModal.mesId}`;
             
+            // Alteração Visual IMEDIATA na célula clicada!
+            let celulaNaTabela = document.querySelector(`td[data-id="${idCelula}"]`);
+            if (celulaNaTabela) {
+                celulaNaTabela.style.backgroundColor = corSelecionada;
+            }
+
+            // Atualiza os dados em modo escondido
             if (!dadosAtuais.coresCelulas) dadosAtuais.coresCelulas = [];
             let index = dadosAtuais.coresCelulas.findIndex(c => c.id === idCelula);
             
@@ -788,8 +841,8 @@
                 else dadosAtuais.coresCelulas.push({ id: idCelula, cor: corSelecionada });
             }
             
-            atualizarInterface();
-            registrarAlteracao(); // Aciona auto-save do Google Drive
+            // Grava silenciosamente no Google Drive sem recarregar a tela inteira
+            registrarAlteracao(); 
         }
 
         function renderizarItensModal() {
